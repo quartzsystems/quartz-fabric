@@ -1,0 +1,228 @@
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080/api";
+
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return sessionStorage.getItem("qf_token");
+}
+
+async function request<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string> | undefined),
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE}${path}`, { ...options, headers });
+
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      message = body.error ?? message;
+    } catch {}
+    throw new Error(message);
+  }
+
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+export interface ApiUser {
+  id: string;
+  username: string;
+  email: string;
+  display_name: string;
+  role: "admin" | "operator" | "viewer";
+  status: "active" | "inactive";
+  last_login: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LoginResponse {
+  token: string;
+  user: ApiUser;
+}
+
+export interface UpdateProfilePayload {
+  display_name?: string;
+  email?: string;
+  password?: string;
+}
+
+export const auth = {
+  login: (username: string, password: string) =>
+    request<LoginResponse>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+  me: () => request<ApiUser>("/auth/me"),
+  updateMe: (payload: UpdateProfilePayload) =>
+    request<ApiUser>("/auth/me", { method: "PUT", body: JSON.stringify(payload) }),
+};
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+
+export interface CreateUserPayload {
+  username: string;
+  email: string;
+  display_name: string;
+  password: string;
+  role: string;
+}
+
+export interface UpdateUserPayload {
+  display_name?: string;
+  email?: string;
+  role?: string;
+  status?: string;
+  password?: string;
+}
+
+export const users = {
+  list: () => request<ApiUser[]>("/users"),
+  get: (id: string) => request<ApiUser>(`/users/${id}`),
+  create: (payload: CreateUserPayload) =>
+    request<ApiUser>("/users", { method: "POST", body: JSON.stringify(payload) }),
+  update: (id: string, payload: UpdateUserPayload) =>
+    request<ApiUser>(`/users/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  delete: (id: string) =>
+    request<void>(`/users/${id}`, { method: "DELETE" }),
+};
+
+// ─── Devices ──────────────────────────────────────────────────────────────────
+
+export interface ApiDevice {
+  id: string;
+  hostname: string;
+  ip_address: string;
+  model: string | null;
+  location: string;
+  role: "core" | "distribution" | "access" | "edge";
+  status: "online" | "offline" | "warning" | "unknown";
+  os_version: string | null;
+  serial_number: string | null;
+  port_count: number | null;
+  uptime: string | null;
+  cpu_pct: number | null;
+  mem_pct: number | null;
+  last_seen: string | null;
+  ssh_port: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateDevicePayload {
+  hostname: string;
+  ip_address: string;
+  location: string;
+  role: string;
+  ssh_username: string;
+  ssh_password: string;
+  ssh_port?: number;
+}
+
+export interface UpdateDevicePayload {
+  hostname?: string;
+  ip_address?: string;
+  location?: string;
+  role?: string;
+  ssh_username?: string;
+  ssh_password?: string;
+  ssh_port?: number;
+}
+
+export interface ApiInterface {
+  id: string;
+  device_id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  speed: string | null;
+  duplex: string | null;
+  updated_at: string;
+}
+
+export interface ApiArpEntry {
+  id: string;
+  device_id: string;
+  ip_address: string;
+  mac_address: string;
+  interface: string | null;
+  age_minutes: string | null;
+  updated_at: string;
+}
+
+export interface ApiMacEntry {
+  id: string;
+  device_id: string;
+  mac_address: string;
+  vlan: string | null;
+  interface: string | null;
+  entry_type: string | null;
+  updated_at: string;
+}
+
+export interface ApiEvent {
+  id: string;
+  device_id: string;
+  severity: "info" | "warning" | "error";
+  message: string;
+  created_at: string;
+}
+
+export const devices = {
+  list: () => request<ApiDevice[]>("/devices"),
+  get: (id: string) => request<ApiDevice>(`/devices/${id}`),
+  create: (payload: CreateDevicePayload) =>
+    request<ApiDevice>("/devices", { method: "POST", body: JSON.stringify(payload) }),
+  update: (id: string, payload: UpdateDevicePayload) =>
+    request<ApiDevice>(`/devices/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  delete: (id: string) =>
+    request<void>(`/devices/${id}`, { method: "DELETE" }),
+  refresh: (id: string) =>
+    request<void>(`/devices/${id}/refresh`, { method: "POST" }),
+  interfaces: (id: string) => request<ApiInterface[]>(`/devices/${id}/interfaces`),
+  arp: (id: string) => request<ApiArpEntry[]>(`/devices/${id}/arp`),
+  mac: (id: string) => request<ApiMacEntry[]>(`/devices/${id}/mac`),
+  events: (id: string, limit?: number) =>
+    request<ApiEvent[]>(`/devices/${id}/events${limit ? `?limit=${limit}` : ""}`),
+};
+
+// ─── Summary ──────────────────────────────────────────────────────────────────
+
+export interface ApiSummary {
+  total_devices: number;
+  online_devices: number;
+  offline_devices: number;
+  warning_devices: number;
+  total_users: number;
+  active_users: number;
+  recent_events: ApiEvent[];
+}
+
+export const summary = {
+  get: () => request<ApiSummary>("/summary"),
+};
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+
+export interface ApiSettings {
+  poll_interval_secs: number;
+  poll_concurrency: number;
+  ssh_connect_timeout_secs: number;
+  ssh_read_timeout_secs: number;
+  jwt_expiry_hours: number;
+  listen_addr: string;
+  cors_origin: string;
+}
+
+export const settings = {
+  get: () => request<ApiSettings>("/settings"),
+};
