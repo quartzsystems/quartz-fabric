@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -27,6 +27,8 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
+  ChevronDown,
+  Plus,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -107,6 +109,205 @@ function expandVlanList(input: string): number[] {
     }
   }
   return [...vlans].sort((a, b) => a - b);
+}
+
+// Single-VLAN searchable dropdown
+function VlanPicker({
+  vlans,
+  value,
+  onChange,
+  nullable = false,
+  placeholder = "Select VLAN",
+  disabled = false,
+}: {
+  vlans: ApiVlan[];
+  value: string;
+  onChange: (v: string) => void;
+  nullable?: boolean;
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const selected = vlans.find((v) => String(v.vlan_id) === value);
+  const filtered = vlans.filter((v) => {
+    const term = q.toLowerCase();
+    return String(v.vlan_id).includes(term) || (v.name ?? "").toLowerCase().includes(term);
+  });
+
+  const pick = (v: ApiVlan | null) => {
+    onChange(v ? String(v.vlan_id) : "");
+    setOpen(false);
+    setQ("");
+  };
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        type="button"
+        className="input"
+        onClick={() => !disabled && setOpen((o) => !o)}
+        disabled={disabled}
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%", cursor: "pointer", textAlign: "left" }}
+      >
+        {selected ? (
+          <span>
+            <span style={{ fontFamily: "var(--qz-font-mono)", fontSize: 12 }}>{selected.vlan_id}</span>
+            {selected.name && <span style={{ color: "var(--qz-fg-3)", marginLeft: 6 }}>{selected.name}</span>}
+          </span>
+        ) : (
+          <span style={{ color: "var(--qz-fg-4)" }}>{value || placeholder}</span>
+        )}
+        <ChevronDown size={13} style={{ color: "var(--qz-fg-4)", flexShrink: 0 }} />
+      </button>
+
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "var(--qz-surface-raised)", border: "1px solid var(--qz-border-strong)", borderRadius: "var(--qz-radius-lg)", boxShadow: "var(--qz-shadow-2)", zIndex: 50, overflow: "hidden" }}>
+          <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--qz-border)", display: "flex", alignItems: "center", gap: 6 }}>
+            <Search size={12} style={{ color: "var(--qz-fg-4)" }} />
+            <input
+              autoFocus
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search VLANs…"
+              style={{ flex: 1, background: "transparent", border: "none", outline: "none", fontSize: 12, color: "var(--qz-fg-1)", fontFamily: "var(--qz-font-sans)" }}
+            />
+          </div>
+          <div style={{ maxHeight: 220, overflowY: "auto" }}>
+            {nullable && (
+              <button type="button" onClick={() => pick(null)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "7px 12px", background: "transparent", border: "none", cursor: "pointer", fontSize: 13, color: "var(--qz-fg-3)", fontFamily: "var(--qz-font-sans)" }}>
+                None
+              </button>
+            )}
+            {filtered.length === 0 && <div style={{ padding: "10px 12px", fontSize: 12, color: "var(--qz-fg-4)" }}>No VLANs match</div>}
+            {filtered.map((v) => {
+              const isSel = String(v.vlan_id) === value;
+              return (
+                <button key={v.vlan_id} type="button" onClick={() => pick(v)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "7px 12px", background: isSel ? "color-mix(in oklab, var(--qz-accent) 10%, transparent)" : "transparent", border: "none", cursor: "pointer", fontFamily: "var(--qz-font-sans)" }}>
+                  <span style={{ width: 14, display: "flex", alignItems: "center", flexShrink: 0 }}>
+                    {isSel && <Check size={12} style={{ color: "var(--qz-accent)" }} />}
+                  </span>
+                  <span style={{ fontFamily: "var(--qz-font-mono)", fontSize: 12, color: "var(--qz-fg-2)", flexShrink: 0 }}>{v.vlan_id}</span>
+                  {v.name && <span style={{ fontSize: 13, color: "var(--qz-fg-1)" }}>{v.name}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Multi-VLAN searchable checkbox dropdown
+function VlanMultiPicker({
+  vlans,
+  value,
+  onChange,
+  disabled = false,
+}: {
+  vlans: ApiVlan[];
+  value: string; // comma-separated VLAN IDs
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const selectedIds = new Set(
+    value.split(",").map((s) => s.trim()).filter(Boolean).map(Number).filter((n) => !isNaN(n) && n > 0)
+  );
+
+  const filtered = vlans.filter((v) => {
+    const term = q.toLowerCase();
+    return String(v.vlan_id).includes(term) || (v.name ?? "").toLowerCase().includes(term);
+  });
+
+  const toggle = (id: number) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    onChange([...next].sort((a, b) => a - b).join(","));
+  };
+
+  const label =
+    selectedIds.size === 0 ? "Select VLANs…" :
+    selectedIds.size === 1 ? `VLAN ${[...selectedIds][0]}` :
+    `${selectedIds.size} VLANs selected`;
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        type="button"
+        className="input"
+        onClick={() => !disabled && setOpen((o) => !o)}
+        disabled={disabled}
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%", cursor: "pointer", textAlign: "left" }}
+      >
+        <span style={{ color: selectedIds.size === 0 ? "var(--qz-fg-4)" : "var(--qz-fg-1)" }}>{label}</span>
+        <ChevronDown size={13} style={{ color: "var(--qz-fg-4)", flexShrink: 0 }} />
+      </button>
+
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "var(--qz-surface-raised)", border: "1px solid var(--qz-border-strong)", borderRadius: "var(--qz-radius-lg)", boxShadow: "var(--qz-shadow-2)", zIndex: 50, overflow: "hidden" }}>
+          <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--qz-border)", display: "flex", alignItems: "center", gap: 6 }}>
+            <Search size={12} style={{ color: "var(--qz-fg-4)" }} />
+            <input
+              autoFocus
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search VLANs…"
+              style={{ flex: 1, background: "transparent", border: "none", outline: "none", fontSize: 12, color: "var(--qz-fg-1)", fontFamily: "var(--qz-font-sans)" }}
+            />
+          </div>
+          <div style={{ padding: "4px 12px", display: "flex", gap: 8, borderBottom: "1px solid var(--qz-border)" }}>
+            <button type="button" onClick={() => onChange(vlans.map((v) => v.vlan_id).sort((a, b) => a - b).join(","))} style={{ fontSize: 11, color: "var(--qz-accent)", background: "none", border: "none", cursor: "pointer", padding: "2px 0" }}>
+              Select all
+            </button>
+            <span style={{ color: "var(--qz-fg-4)", fontSize: 11 }}>·</span>
+            <button type="button" onClick={() => onChange("")} style={{ fontSize: 11, color: "var(--qz-fg-4)", background: "none", border: "none", cursor: "pointer", padding: "2px 0" }}>
+              Clear
+            </button>
+          </div>
+          <div style={{ maxHeight: 240, overflowY: "auto" }}>
+            {filtered.length === 0 && <div style={{ padding: "10px 12px", fontSize: 12, color: "var(--qz-fg-4)" }}>No VLANs match</div>}
+            {filtered.map((v) => {
+              const checked = selectedIds.has(v.vlan_id);
+              return (
+                <button key={v.vlan_id} type="button" onClick={() => toggle(v.vlan_id)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "7px 12px", background: checked ? "color-mix(in oklab, var(--qz-accent) 8%, transparent)" : "transparent", border: "none", cursor: "pointer", fontFamily: "var(--qz-font-sans)" }}>
+                  <div style={{ width: 14, height: 14, borderRadius: 3, border: `1.5px solid ${checked ? "var(--qz-accent)" : "var(--qz-border-strong)"}`, background: checked ? "var(--qz-accent)" : "transparent", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                    {checked && <Check size={9} style={{ color: "var(--qz-ink-0)" }} />}
+                  </div>
+                  <span style={{ fontFamily: "var(--qz-font-mono)", fontSize: 12, color: "var(--qz-fg-2)", flexShrink: 0 }}>{v.vlan_id}</span>
+                  {v.name && <span style={{ fontSize: 13, color: "var(--qz-fg-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.name}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function naturalCompare(a: string, b: string): number {
@@ -264,6 +465,13 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
   // VLAN edit modal
   const [editingVlan, setEditingVlan] = useState<ApiVlan | null>(null);
   const [editVlanName, setEditVlanName] = useState("");
+  const [editVlanId, setEditVlanId] = useState("");
+  const [confirmDeleteVlan, setConfirmDeleteVlan] = useState(false);
+
+  // VLAN create modal
+  const [creatingVlan, setCreatingVlan] = useState(false);
+  const [newVlanId, setNewVlanId] = useState("");
+  const [newVlanName, setNewVlanName] = useState("");
 
 
   const loadDevice = useCallback(async () => {
@@ -523,19 +731,72 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
 
   const openVlanEdit = (vlan: ApiVlan) => {
     setEditingVlan(vlan);
+    setEditVlanId(String(vlan.vlan_id));
     setEditVlanName(vlan.name ?? "");
+    setConfirmDeleteVlan(false);
   };
 
   const saveVlanEdit = () => {
     if (!editingVlan) return;
+    const oldId = editingVlan.vlan_id;
+    const newId = parseInt(editVlanId, 10);
+    const idChanging = !isNaN(newId) && newId !== oldId && newId >= 1 && newId <= 4094;
+
+    let commands: string[];
+    let summary: string;
+
+    if (idChanging) {
+      const parsePorts = (s: string | null) => (s ?? "").split(",").map((p) => p.trim()).filter(Boolean);
+      const tagged = parsePorts(editingVlan.tagged_ports);
+      const untagged = parsePorts(editingVlan.untagged_ports);
+      commands = ["configure terminal", `vlan ${newId}`, ...(editVlanName ? [`name ${editVlanName}`] : []), "exit"];
+      if (tagged.length > 0 || untagged.length > 0) {
+        commands.push(`interface vlan ${newId}`);
+        tagged.forEach((p) => commands.push(`tagged ${p}`));
+        untagged.forEach((p) => commands.push(`untagged ${p}`));
+        commands.push("exit");
+      }
+      commands.push(`no vlan ${oldId}`, "end");
+      summary = `VLAN ${oldId} → ${newId}${editVlanName !== (editingVlan.name ?? "") ? `, name → "${editVlanName}"` : ""}`;
+    } else {
+      commands = ["configure terminal", `vlan ${oldId}`, ...(editVlanName ? [`name ${editVlanName}`] : []), "end"];
+      summary = `VLAN ${oldId}: name → "${editVlanName}"`;
+    }
+
+    const change: StagedChange = { id: `vlan-${oldId}`, summary, commands: commands.join("\n") };
+    setStagedChanges((prev) => [...prev.filter((c) => c.id !== change.id), change]);
+    setEditingVlan(null);
+    toast({ title: "Change staged", message: `${summary} queued for commit.`, type: "info" });
+  };
+
+  const stageVlanDelete = () => {
+    if (!editingVlan) return;
+    const vlan = editingVlan;
+    const summary = `Delete VLAN ${vlan.vlan_id}${vlan.name ? ` (${vlan.name})` : ""}`;
     const change: StagedChange = {
-      id: `vlan-${editingVlan.vlan_id}`,
-      summary: `VLAN ${editingVlan.vlan_id}: name → "${editVlanName}"`,
-      commands: ["configure terminal", `vlan ${editingVlan.vlan_id}`, `name ${editVlanName}`, "end"].join("\n"),
+      id: `vlan-del-${vlan.vlan_id}`,
+      summary,
+      commands: ["configure terminal", `no vlan ${vlan.vlan_id}`, "end"].join("\n"),
     };
     setStagedChanges((prev) => [...prev.filter((c) => c.id !== change.id), change]);
     setEditingVlan(null);
-    toast({ title: "Change staged", message: `VLAN ${editingVlan.vlan_id} queued for commit.`, type: "info" });
+    toast({ title: "Change staged", message: `${summary} queued for commit.`, type: "info" });
+  };
+
+  const saveVlanCreate = () => {
+    const id = parseInt(newVlanId, 10);
+    if (isNaN(id) || id < 1 || id > 4094) return;
+    const summary = `Create VLAN ${id}${newVlanName ? ` (${newVlanName})` : ""}`;
+    const change: StagedChange = {
+      id: `vlan-create-${id}`,
+      summary,
+      commands: ["configure terminal", `vlan ${id}`, ...(newVlanName ? [`name ${newVlanName}`] : []), "end"].join("\n"),
+    };
+    setStagedChanges((prev) => [...prev.filter((c) => c.id !== change.id), change]);
+    setCreatingVlan(false);
+    setNewVlanId("");
+    setNewVlanName("");
+    toast({ title: "Change staged", message: `${summary} queued for commit.`, type: "info" });
   };
 
   const handleCommit = async () => {
@@ -716,38 +977,34 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
           </Field>
 
           {editIfaceSwitchportMode === "access" && (
-            <Field label="Access VLAN" desc="VLAN ID to assign to this port (1–4094)">
-              <input
-                className="input"
-                type="number"
-                min={1}
-                max={4094}
-                placeholder="10"
+            <Field label="Access VLAN" desc="VLAN to assign to this port">
+              <VlanPicker
+                vlans={vlans ?? []}
                 value={editIfaceAccessVlan}
-                onChange={(e) => setEditIfaceAccessVlan(e.target.value)}
+                onChange={setEditIfaceAccessVlan}
+                disabled={ifaceConfigLoading}
               />
             </Field>
           )}
 
           {editIfaceSwitchportMode === "trunk" && (
             <>
-              <Field label="Allowed VLANs" desc="Tagged VLANs carried on this trunk, e.g. 10,20,30-50">
-                <input
-                  className="input"
-                  placeholder="10,20,30-50"
+              <Field label="Allowed VLANs" desc="Tagged VLANs carried on this trunk">
+                <VlanMultiPicker
+                  vlans={vlans ?? []}
                   value={editIfaceTaggedVlans}
-                  onChange={(e) => setEditIfaceTaggedVlans(e.target.value)}
+                  onChange={setEditIfaceTaggedVlans}
+                  disabled={ifaceConfigLoading}
                 />
               </Field>
-              <Field label="Native VLAN" desc="Untagged (native) VLAN — leave blank to keep current">
-                <input
-                  className="input"
-                  type="number"
-                  min={1}
-                  max={4094}
-                  placeholder="1"
+              <Field label="Native VLAN / Network" desc="Untagged (native) VLAN — leave blank to keep current">
+                <VlanPicker
+                  vlans={vlans ?? []}
                   value={editIfaceNativeVlan}
-                  onChange={(e) => setEditIfaceNativeVlan(e.target.value)}
+                  onChange={setEditIfaceNativeVlan}
+                  nullable
+                  placeholder="None"
+                  disabled={ifaceConfigLoading}
                 />
               </Field>
             </>
@@ -775,6 +1032,22 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
         size="sm"
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <Field label="VLAN ID" desc="Change to renumber this VLAN on the switch">
+            <input
+              className="input"
+              type="number"
+              min={1}
+              max={4094}
+              value={editVlanId}
+              onChange={(e) => setEditVlanId(e.target.value)}
+            />
+          </Field>
+          {editVlanId !== String(editingVlan?.vlan_id ?? "") && (
+            <div className="alert alert-warn" style={{ marginTop: -6 }}>
+              <AlertTriangle size={14} />
+              <span>Renumbering will create VLAN {editVlanId}, migrate all ports, then delete VLAN {editingVlan?.vlan_id}.</span>
+            </div>
+          )}
           <Field label="VLAN Name">
             <input
               className="input"
@@ -787,11 +1060,66 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
             <GitCommitHorizontal size={14} />
             <span>Change will be staged — review and push to the switch from the commit bar.</span>
           </div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+            {canEdit && !confirmDeleteVlan && (
+              <button className="btn btn-ghost btn-sm" style={{ color: "var(--qz-danger)" }} onClick={() => setConfirmDeleteVlan(true)}>
+                <Trash2 size={13} /> Delete VLAN
+              </button>
+            )}
+            {confirmDeleteVlan && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: "var(--qz-fs-xs)", color: "var(--qz-danger)" }}>Delete VLAN {editingVlan?.vlan_id}?</span>
+                <button className="btn btn-danger btn-sm" onClick={stageVlanDelete}>Confirm</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDeleteVlan(false)}>Cancel</button>
+              </div>
+            )}
+            {!confirmDeleteVlan && <span />}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn btn-ghost" onClick={() => setEditingVlan(null)}>Cancel</button>
+              <button className="btn" onClick={saveVlanEdit}>
+                <Check size={13} /> Stage Change
+              </button>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* VLAN create modal */}
+      <Modal
+        opened={creatingVlan}
+        onClose={() => setCreatingVlan(false)}
+        title="New VLAN"
+        size="sm"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <Field label="VLAN ID" desc="1–4094">
+            <input
+              className="input"
+              type="number"
+              min={1}
+              max={4094}
+              placeholder="10"
+              value={newVlanId}
+              onChange={(e) => setNewVlanId(e.target.value)}
+              autoFocus
+            />
+          </Field>
+          <Field label="Name" desc="Optional — leave blank for no name">
+            <input
+              className="input"
+              placeholder="Production"
+              value={newVlanName}
+              onChange={(e) => setNewVlanName(e.target.value)}
+            />
+          </Field>
+          <div className="alert alert-info">
+            <GitCommitHorizontal size={14} />
+            <span>Change will be staged — review and push to the switch from the commit bar.</span>
+          </div>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <button className="btn btn-ghost" onClick={() => setEditingVlan(null)}>Cancel</button>
-            <button className="btn" onClick={saveVlanEdit} disabled={!editVlanName.trim()}>
-              <Check size={13} />
-              Stage Change
+            <button className="btn btn-ghost" onClick={() => setCreatingVlan(false)}>Cancel</button>
+            <button className="btn" onClick={saveVlanCreate} disabled={!newVlanId.trim() || parseInt(newVlanId, 10) < 1 || parseInt(newVlanId, 10) > 4094}>
+              <Check size={13} /> Stage Change
             </button>
           </div>
         </div>
@@ -1210,9 +1538,16 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
             <span style={{ fontSize: "var(--qz-fs-sm)", color: "var(--qz-fg-3)" }}>
               {vlans ? `${vlans.length} VLANs` : "Loading..."}
             </span>
-            <button className="btn btn-ghost btn-sm" onClick={() => { setVlans(null); loadTabData("vlans"); }}>
-              Reload
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              {canEdit && (
+                <button className="btn btn-sm" onClick={() => { setNewVlanId(""); setNewVlanName(""); setCreatingVlan(true); }}>
+                  <Plus size={13} /> New VLAN
+                </button>
+              )}
+              <button className="btn btn-ghost btn-sm" onClick={() => { setVlans(null); loadTabData("vlans"); }}>
+                Reload
+              </button>
+            </div>
           </div>
           <div className="scroll-x">
             <table className="qz-table">

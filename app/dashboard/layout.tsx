@@ -4,16 +4,17 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
-  Network,
+  Bell,
+  CircleHelp,
+  ChevronUp,
   LayoutDashboard,
   Server,
   Users,
   Settings,
   LogOut,
   User,
-  ShieldCheck,
   FileCode,
-  ChevronDown,
+  Search,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import type { ReactNode } from "react";
@@ -29,6 +30,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -37,7 +39,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     }
   }, [user, isLoading, router]);
 
-  // Close dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -50,26 +51,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   if (isLoading || !user) {
     return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "100vh",
-          background: "var(--qz-bg)",
-        }}
-      >
-        <svg
-          width="32"
-          height="32"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="var(--qz-accent)"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{ animation: "spin 1s linear infinite" }}
-        >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--qz-bg)" }}>
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--qz-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: "spin 1s linear infinite" }}>
           <path d="M21 12a9 9 0 1 1-6.219-8.56" />
         </svg>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -82,29 +65,22 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     router.replace("/login");
   };
 
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = searchQuery.trim();
+    if (q) {
+      router.push(`/dashboard/devices?q=${encodeURIComponent(q)}`);
+    }
+  };
+
   const isActive = (href: string, exact = false) =>
     exact ? pathname === href : pathname.startsWith(href);
 
   const navItems = [
-    {
-      label: "Dashboard",
-      href: "/dashboard",
-      icon: <LayoutDashboard size={16} />,
-      exact: true,
-    },
-    {
-      label: "Devices",
-      href: "/dashboard/devices",
-      icon: <Server size={16} />,
-    },
-    {
-      label: "Config Templates",
-      href: "/dashboard/config-templates",
-      icon: <FileCode size={16} />,
-    },
-    ...(user.role === "admin"
-      ? [{ label: "Users", href: "/dashboard/users", icon: <Users size={16} /> }]
-      : []),
+    { label: "Dashboard",        href: "/dashboard",                  icon: <LayoutDashboard size={16} />, exact: true },
+    { label: "Devices",          href: "/dashboard/devices",          icon: <Server size={16} /> },
+    { label: "Config Templates", href: "/dashboard/config-templates", icon: <FileCode size={16} /> },
+    ...(user.role === "admin" ? [{ label: "Users", href: "/dashboard/users", icon: <Users size={16} /> }] : []),
   ];
 
   const secondaryNav = [
@@ -113,148 +89,111 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      {/* Top bar */}
+
+      {/* ── Top bar ─────────────────────────────────────────── */}
       <header
         style={{
           height: 56,
-          background: "var(--qz-surface)",
+          background: "var(--qz-ink-0)",
           borderBottom: "1px solid var(--qz-border)",
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 16px",
+          gap: 12,
+          padding: "0 18px",
           flexShrink: 0,
           position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
+          top: 0, left: 0, right: 0,
           zIndex: 200,
         }}
       >
-        {/* Wordmark */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: "var(--qz-radius-sm)",
-              background: "var(--qz-accent-soft)",
-              border: "1px solid var(--qz-accent-border)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "var(--qz-accent)",
-              flexShrink: 0,
-            }}
-          >
-            <Network size={17} />
-          </div>
-          <div>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 800,
-                color: "var(--qz-accent)",
-                letterSpacing: "0.05em",
-                lineHeight: 1.1,
-              }}
-            >
-              QUARTZ FABRIC
-            </div>
-            <div
-              style={{
-                fontSize: 9,
-                color: "var(--qz-fg-4)",
-                letterSpacing: "0.14em",
-                textTransform: "uppercase",
-              }}
-            >
-              Network Management
-            </div>
-          </div>
+        {/* Brand */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-mark.png" alt="Quartz" style={{ width: 28, height: 28 }} />
+          <span style={{ fontWeight: 700, color: "var(--qz-fg-1)", letterSpacing: "-0.01em", fontSize: 15 }}>
+            Quartz Fabric
+          </span>
         </div>
 
-        {/* User menu */}
-        <div className="dropdown" ref={menuRef}>
-          <button
-            onClick={() => setMenuOpen((o) => !o)}
+        {/* Spacer */}
+        <div style={{ flex: 1 }} />
+
+        {/* Global search */}
+        <form onSubmit={handleSearch} style={{ display: "contents" }}>
+          <div
             style={{
               display: "flex",
               alignItems: "center",
               gap: 8,
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              padding: "4px 8px",
+              background: "var(--qz-input-bg)",
+              border: "1px solid var(--qz-border)",
               borderRadius: "var(--qz-radius-md)",
-              color: "var(--qz-fg-2)",
-              transition: "background var(--qz-dur-1)",
+              padding: "0 10px",
+              minWidth: 240,
+              height: 34,
             }}
           >
-            <span className="avatar avatar-sm">{user.display_name.charAt(0)}</span>
+            <Search size={14} style={{ color: "var(--qz-fg-4)", flexShrink: 0 }} />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search"
+              style={{
+                flex: 1,
+                background: "transparent",
+                border: "none",
+                outline: "none",
+                fontSize: 13,
+                color: "var(--qz-fg-1)",
+                fontFamily: "var(--qz-font-sans)",
+              }}
+            />
             <span
               style={{
-                fontSize: "var(--qz-fs-sm)",
-                fontWeight: 500,
-                color: "var(--qz-fg)",
+                fontFamily: "var(--qz-font-mono)",
+                fontSize: 10,
+                color: "var(--qz-fg-4)",
+                border: "1px solid var(--qz-border)",
+                padding: "1px 5px",
+                borderRadius: "var(--qz-radius-sm)",
+                flexShrink: 0,
               }}
             >
-              {user.display_name}
+              ⌘K
             </span>
-            <span className={ROLE_BADGE[user.role] ?? "badge badge-neutral"}>{user.role}</span>
-            <ChevronDown size={13} style={{ color: "var(--qz-fg-4)" }} />
-          </button>
+          </div>
+        </form>
 
-          {menuOpen && (
-            <div className="dropdown-menu">
-              <div className="dropdown-label">{user.email}</div>
-              <div className="dropdown-divider" />
-              <Link
-                href="/dashboard/profile"
-                className="dropdown-item"
-                onClick={() => setMenuOpen(false)}
-              >
-                <User size={14} />
-                My Profile
-              </Link>
-              <Link
-                href="/dashboard/settings"
-                className="dropdown-item"
-                onClick={() => setMenuOpen(false)}
-              >
-                <Settings size={14} />
-                Settings
-              </Link>
-              <div className="dropdown-divider" />
-              <button className="dropdown-item danger" onClick={handleLogout}>
-                <LogOut size={14} />
-                Sign Out
-              </button>
-            </div>
-          )}
-        </div>
+        {/* Alerts */}
+        <button className="btn-icon" title="Alerts" aria-label="Alerts" style={{ width: 34, height: 34 }}>
+          <Bell size={17} />
+        </button>
+
+        {/* Help */}
+        <button className="btn-icon" title="Help" aria-label="Help" style={{ width: 34, height: 34 }}>
+          <CircleHelp size={17} />
+        </button>
       </header>
 
-      {/* Body: sidebar + main */}
+      {/* ── Body: sidebar + main ─────────────────────────────── */}
       <div style={{ display: "flex", flex: 1, marginTop: 56 }}>
+
         {/* Sidebar */}
         <nav
           style={{
             width: 240,
-            background: "var(--qz-surface)",
+            background: "var(--qz-ink-0)",
             borderRight: "1px solid var(--qz-border)",
             display: "flex",
             flexDirection: "column",
-            padding: "10px 8px",
+            padding: "10px 8px 0",
             position: "fixed",
-            top: 56,
-            left: 0,
-            bottom: 0,
-            overflowY: "auto",
+            top: 56, left: 0, bottom: 0,
             zIndex: 100,
           }}
         >
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+          {/* Nav items */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2, overflowY: "auto" }}>
             {navItems.map((item) => (
               <Link
                 key={item.href}
@@ -280,20 +219,101 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             ))}
           </div>
 
+          {/* User section */}
           <div
+            ref={menuRef}
             style={{
-              paddingTop: 12,
               borderTop: "1px solid var(--qz-border)",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "10px 4px",
+              padding: "8px 0",
+              position: "relative",
+              flexShrink: 0,
             }}
           >
-            <ShieldCheck size={13} style={{ color: "var(--qz-success)" }} />
-            <span style={{ fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-4)" }}>
-              Secure session active
-            </span>
+            {/* Upward popover */}
+            {menuOpen && (
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: "calc(100% + 4px)",
+                  left: 0,
+                  right: 0,
+                  background: "var(--qz-surface-raised)",
+                  border: "1px solid var(--qz-border-strong)",
+                  borderRadius: "var(--qz-radius-lg)",
+                  boxShadow: "var(--qz-shadow-2)",
+                  overflow: "hidden",
+                  zIndex: 10,
+                }}
+              >
+                <div className="dropdown-label" style={{ paddingTop: 8 }}>{user.email}</div>
+                <div className="dropdown-divider" />
+                <Link href="/dashboard/profile" className="dropdown-item" onClick={() => setMenuOpen(false)}>
+                  <User size={14} /> My Profile
+                </Link>
+                <Link href="/dashboard/settings" className="dropdown-item" onClick={() => setMenuOpen(false)}>
+                  <Settings size={14} /> Settings
+                </Link>
+                <div className="dropdown-divider" />
+                <button className="dropdown-item danger" onClick={handleLogout}>
+                  <LogOut size={14} /> Sign Out
+                </button>
+              </div>
+            )}
+
+            {/* User row button */}
+            <button
+              onClick={() => setMenuOpen((o) => !o)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                width: "100%",
+                background: menuOpen ? "color-mix(in oklab, white 4%, transparent)" : "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: "8px 10px",
+                borderRadius: "var(--qz-radius-md)",
+                textAlign: "left",
+                transition: "background var(--qz-dur-1)",
+              }}
+            >
+              {/* Avatar */}
+              <div
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  background: "linear-gradient(135deg, var(--qz-green-700), var(--qz-green-500))",
+                  display: "grid",
+                  placeItems: "center",
+                  color: "var(--qz-fg-on-accent)",
+                  fontWeight: 700,
+                  fontSize: 12,
+                  flexShrink: 0,
+                }}
+              >
+                {user.display_name.charAt(0).toUpperCase()}
+              </div>
+              {/* Name + role */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--qz-fg-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {user.display_name}
+                </div>
+                <span className={ROLE_BADGE[user.role] ?? "badge badge-neutral"} style={{ marginTop: 2 }}>
+                  {user.role}
+                </span>
+              </div>
+              {/* Chevron */}
+              <ChevronUp
+                size={13}
+                style={{
+                  color: "var(--qz-fg-4)",
+                  flexShrink: 0,
+                  transform: menuOpen ? "none" : "rotate(180deg)",
+                  transition: `transform var(--qz-dur-2)`,
+                }}
+              />
+            </button>
           </div>
         </nav>
 

@@ -23,9 +23,17 @@
 }
 
 :root {
+  /* Full green scale */
+  --qz-green-50:  #e6fff4;
+  --qz-green-100: #b3ffde;
+  --qz-green-200: #80ffc8;
+  --qz-green-300: #4dffb2;
   --qz-green-400: #1aff9c;
   --qz-green-500: #00d992;
   --qz-green-600: #00b07a;
+  --qz-green-700: #008760;
+  --qz-green-800: #005e44;
+  --qz-green-900: #003528;
   --qz-ink-0:   #0b0d12;
   --qz-ink-1:   #0f1117;
   --qz-ink-2:   #161920;
@@ -48,10 +56,13 @@
   --qz-border-subtle:  #1f222b;
   --qz-divider:        #1c1f28;
   --qz-fg:    #f2f3f5;
+  --qz-fg-1:  #f2f3f5;   /* high-contrast text (alias for fg) */
   --qz-fg-2:  #d7d9de;
   --qz-fg-3:  #a2a6b0;
   --qz-fg-4:  #6b6f7a;
   --qz-fg-on-accent: #062014;
+  --qz-fg-on-danger: #ffffff;
+  --qz-bg-elevated: #161920;
   --qz-accent:        #00d992;
   --qz-accent-hover:  #1aff9c;
   --qz-accent-press:  #00b07a;
@@ -66,8 +77,11 @@
   --qz-warn-soft:    color-mix(in oklab, #f5b243 16%, transparent);
   --qz-danger-soft:  color-mix(in oklab, #ff5d6c 16%, transparent);
   --qz-info-soft:    color-mix(in oklab, #4fb3ff 16%, transparent);
-  --qz-font-sans:  "Manrope", ui-sans-serif, system-ui, sans-serif;
-  --qz-font-mono:  "JetBrains Mono", ui-monospace, monospace;
+  --qz-font-sans:    "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --qz-font-mono:    "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --qz-font-display: "Manrope", ui-sans-serif, system-ui, sans-serif;
+
+  /* Type scale */
   --qz-fs-xs:   12px;
   --qz-fs-sm:   13px;
   --qz-fs-base: 15px;
@@ -75,15 +89,64 @@
   --qz-fs-lg:   18px;
   --qz-fs-xl:   22px;
   --qz-fs-2xl:  28px;
+  --qz-fs-3xl:  36px;
+  --qz-fs-4xl:  48px;
+  --qz-fs-5xl:  64px;
+
+  /* Font weights */
+  --qz-fw-regular:  400;
+  --qz-fw-medium:   500;
+  --qz-fw-semibold: 600;
+  --qz-fw-bold:     700;
+  --qz-fw-display:  800;
+
+  /* Line heights */
+  --qz-lh-tight:  1.1;
+  --qz-lh-snug:   1.25;
+  --qz-lh-normal: 1.45;
+  --qz-lh-loose:  1.6;
+
+  /* Letter spacing */
+  --qz-tracking-tight:   -0.02em;
+  --qz-tracking-snug:    -0.01em;
+  --qz-tracking-normal:  0em;
+  --qz-tracking-wide:    0.04em;
+  --qz-tracking-eyebrow: 0.12em;
+
+  /* Spacing (4-pt grid) */
+  --qz-space-0:  0;
+  --qz-space-1:  4px;
+  --qz-space-2:  8px;
+  --qz-space-3:  12px;
+  --qz-space-4:  16px;
+  --qz-space-5:  20px;
+  --qz-space-6:  24px;
+  --qz-space-7:  32px;
+  --qz-space-8:  40px;
+  --qz-space-9:  56px;
+  --qz-space-10: 72px;
+  --qz-space-11: 96px;
+
+  /* Radii */
+  --qz-radius-xs:   2px;
   --qz-radius-sm:   4px;
   --qz-radius-md:   6px;
   --qz-radius-lg:   10px;
+  --qz-radius-xl:   14px;
+  --qz-radius-2xl:  20px;
   --qz-radius-pill: 999px;
-  --qz-shadow-1: 0 1px 0 0 rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
-  --qz-shadow-2: 0 4px 12px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.45);
-  --qz-shadow-3: 0 12px 28px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.5);
-  --qz-inset-line: inset 0 1px 0 rgba(255,255,255,0.04);
-  --qz-ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  /* Shadows */
+  --qz-shadow-1:    0 1px 0 0 rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+  --qz-shadow-2:    0 4px 12px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.45);
+  --qz-shadow-3:    0 12px 28px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.5);
+  --qz-shadow-glow: 0 0 0 1px var(--qz-accent-border), 0 6px 28px color-mix(in oklab, var(--qz-green-500) 22%, transparent);
+  --qz-inset-line:  inset 0 1px 0 rgba(255,255,255,0.04);
+
+  /* Motion */
+  --qz-ease-out:    cubic-bezier(0.22, 0.61, 0.36, 1);
+  --qz-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --qz-ease-snap:   cubic-bezier(0.2, 0.9, 0.2, 1);
   --qz-dur-1: 120ms;
   --qz-dur-2: 180ms;
   --qz-dur-3: 260ms;
@@ -192,7 +255,7 @@ html, body {
   background: var(--qz-surface);
   border: 1px solid var(--qz-border);
   border-radius: var(--qz-radius-lg);
-  box-shadow: var(--qz-shadow-1);
+  box-shadow: var(--qz-inset-line);
 }
 
 .card-hdr {
@@ -317,11 +380,16 @@ textarea.input {
 .qz-table th {
   text-align: left;
   padding: 10px 14px;
-  font-size: var(--qz-fs-xs);
+  font-family: var(--qz-font-mono);
+  font-size: 10.5px;
   font-weight: 600;
-  color: var(--qz-fg-3);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--qz-fg-4);
   border-bottom: 1px solid var(--qz-border);
-  background: var(--qz-surface-sunken);
+  background: var(--qz-surface);
+  position: sticky;
+  top: 0;
   white-space: nowrap;
 }
 .qz-table td {
@@ -633,3 +701,100 @@ code, .mono {
 .avatar-md { width: 36px; height: 36px; font-size: var(--qz-fs-sm); }
 .avatar-lg { width: 56px; height: 56px; font-size: var(--qz-fs-xl); }
 .avatar-xl { width: 72px; height: 72px; font-size: var(--qz-fs-2xl); }
+
+/* ── Secondary button ──────────────────────────────────── */
+
+.btn-secondary {
+  background: var(--qz-surface-raised);
+  color: var(--qz-fg);
+  border-color: var(--qz-border);
+  box-shadow: var(--qz-inset-line);
+}
+.btn-secondary:hover { background: color-mix(in oklab, white 4%, var(--qz-surface-raised)); }
+
+/* ── Page layout helpers ───────────────────────────────── */
+
+.page {
+  padding: 28px 36px;
+  max-width: 1320px;
+  margin: 0 auto;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.page-header .page-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.page-header h1 {
+  font-size: var(--qz-fs-2xl);
+  font-weight: var(--qz-fw-bold);
+  letter-spacing: var(--qz-tracking-snug);
+  color: var(--qz-fg-1);
+  margin: 0;
+}
+
+.page-header .page-sub {
+  font-size: var(--qz-fs-sm);
+  color: var(--qz-fg-3);
+  font-family: var(--qz-font-mono);
+}
+
+.page-header .page-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── KPI card ──────────────────────────────────────────── */
+
+.kpi {
+  padding: 18px;
+}
+
+.kpi .kpi-label {
+  font-family: var(--qz-font-mono);
+  font-size: 10px;
+  color: var(--qz-fg-4);
+  letter-spacing: var(--qz-tracking-eyebrow);
+  text-transform: uppercase;
+}
+
+.kpi .kpi-value {
+  font-family: var(--qz-font-mono);
+  font-weight: var(--qz-fw-semibold);
+  font-size: 32px;
+  color: var(--qz-fg-1);
+  margin-top: 6px;
+  line-height: 1;
+}
+
+.kpi .kpi-value .kpi-unit {
+  font-size: 14px;
+  color: var(--qz-fg-3);
+  font-weight: var(--qz-fw-regular);
+  margin-left: 4px;
+}
+
+.kpi .kpi-delta {
+  margin-top: 10px;
+  font-size: 11px;
+  font-family: var(--qz-font-mono);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--qz-fg-3);
+}
+
+/* ── Scrollbars ────────────────────────────────────────── */
+
+.main-scroll::-webkit-scrollbar { width: 10px; }
+.main-scroll::-webkit-scrollbar-thumb { background: var(--qz-ink-5); border-radius: 999px; }
+.main-scroll::-webkit-scrollbar-track { background: transparent; }
