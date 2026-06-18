@@ -12,10 +12,10 @@ use crate::{
     db,
     error::AppError,
     models::{
-        ArpEntry, CreateDeviceRequest, Device, DeviceEvent, DeviceInterface, MacEntry,
-        Summary, UpdateDeviceRequest,
+        ArpEntry, CreateDeviceRequest, Device, DeviceEvent, DeviceInterface, ExecRequest,
+        ExecResponse, MacEntry, Summary, UpdateDeviceRequest, VlanEntry,
     },
-    polling,
+    polling, ssh,
     state::AppState,
 };
 
@@ -180,6 +180,50 @@ pub async fn events(
         .await
         .map_err(AppError::Internal)?;
     Ok(Json(rows))
+}
+
+pub async fn vlans(
+    AuthUser(_): AuthUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<VlanEntry>>, AppError> {
+    ensure_device_exists(&state, &id).await?;
+    let rows = db::get_device_vlans(&state.db, &id)
+        .await
+        .map_err(AppError::Internal)?;
+    Ok(Json(rows))
+}
+
+pub async fn exec(
+    AuthUser(user): AuthUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(req): Json<ExecRequest>,
+) -> Result<Json<ExecResponse>, AppError> {
+    if user.role == "viewer" {
+        return Err(AppError::Forbidden);
+    }
+    let device = db::get_device_by_id(&state.db, &id)
+        .await
+        .map_err(AppError::Internal)?
+        .ok_or(AppError::NotFound)?;
+
+    let settings = state.settings.read().await;
+    let creds = ssh::DeviceCreds {
+        ip: device.ip_address.clone(),
+        port: device.ssh_port as u16,
+        username: device.ssh_username.clone(),
+        password: device.ssh_password.clone(),
+        connect_timeout_secs: settings.ssh_connect_timeout_secs as u64,
+        read_timeout_secs: settings.ssh_read_timeout_secs.max(60) as u64,
+    };
+    drop(settings);
+
+    let output = ssh::exec_command(creds, &req.command)
+        .await
+        .map_err(|e| AppError::Internal(e))?;
+
+    Ok(Json(ExecResponse { output }))
 }
 
 // ─── Summary ──────────────────────────────────────────────────────────────────

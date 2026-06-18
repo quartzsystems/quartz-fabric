@@ -1,71 +1,138 @@
-﻿"use client";
+"use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import {
-  ActionIcon,
-  Alert,
-  Badge,
-  Box,
-  Button,
-  Code,
-  Divider,
-  Group,
-  Modal,
-  NativeSelect,
-  NumberInput,
-  Paper,
-  PasswordInput,
-  ScrollArea,
-  SimpleGrid,
-  Skeleton,
-  Stack,
-  Table,
-  Text,
-  TextInput,
-  ThemeIcon,
-  Title,
-  Tooltip,
-} from "@mantine/core";
-import { useForm } from "@mantine/form";
-import { useDisclosure } from "@mantine/hooks";
-import { notifications } from "@mantine/notifications";
-import {
-  IconAlertCircle,
-  IconAlertTriangle,
-  IconChevronDown,
-  IconChevronUp,
-  IconDeviceDesktopAnalytics,
-  IconEdit,
-  IconKey,
-  IconPlus,
-  IconRefresh,
-  IconSearch,
-  IconServer,
-  IconTrash,
-  IconWifi,
-  IconWifiOff,
-} from "@tabler/icons-react";
+  AlertCircle,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  Server,
+  Wifi,
+  WifiOff,
+  Plus,
+  Trash2,
+  Pencil,
+  Search,
+  RefreshCw,
+  ExternalLink,
+  KeyRound,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { devices as devicesApi, type ApiDevice } from "@/lib/api";
+import { Modal } from "@/components/ui/modal";
+import { useToast } from "@/lib/toast";
 
 type DeviceStatus = "online" | "offline" | "warning" | "unknown";
 
-const STATUS_META: Record<DeviceStatus, { color: string; icon: React.ReactNode; label: string }> = {
-  online: { color: "green", icon: <IconWifi size={13} />, label: "Online" },
-  offline: { color: "red", icon: <IconWifiOff size={13} />, label: "Offline" },
-  warning: { color: "yellow", icon: <IconAlertTriangle size={13} />, label: "Warning" },
-  unknown: { color: "gray", icon: <IconServer size={13} />, label: "Unknown" },
+const STATUS_META: Record<DeviceStatus, { badgeClass: string; icon: React.ReactNode; label: string }> = {
+  online:  { badgeClass: "badge badge-success", icon: <Wifi         size={11} />, label: "Online"  },
+  offline: { badgeClass: "badge badge-danger",  icon: <WifiOff      size={11} />, label: "Offline" },
+  warning: { badgeClass: "badge badge-warn",    icon: <AlertTriangle size={11} />, label: "Warning" },
+  unknown: { badgeClass: "badge badge-neutral", icon: <Server        size={11} />, label: "Unknown" },
 };
 
-const ROLE_COLORS: Record<string, string> = {
-  core: "brand",
-  distribution: "blue",
-  access: "grape",
-  edge: "orange",
+const ROLE_BADGE: Record<string, string> = {
+  core:         "badge badge-accent",
+  distribution: "badge badge-blue",
+  access:       "badge badge-neutral",
+  edge:         "badge badge-warn",
+};
+
+/* ── Small field helper ─────────────────────────────────────────────────────── */
+
+function Field({
+  label,
+  children,
+  error,
+  desc,
+}: {
+  label: string;
+  children: React.ReactNode;
+  error?: string | null;
+  desc?: string;
+}) {
+  return (
+    <div>
+      <label className="field-label">{label}</label>
+      {children}
+      {desc && <div className="field-desc">{desc}</div>}
+      {error && <div className="field-error">{error}</div>}
+    </div>
+  );
+}
+
+function PasswordField({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="input-wrap">
+      <input
+        className="input"
+        type={show ? "text" : "password"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{ paddingRight: 36 }}
+      />
+      <span className="input-suffix">
+        <button
+          type="button"
+          className="btn-icon btn-icon-sm"
+          onClick={() => setShow((s) => !s)}
+          tabIndex={-1}
+        >
+          {show ? <EyeOff size={13} /> : <Eye size={13} />}
+        </button>
+      </span>
+    </div>
+  );
+}
+
+/* ── Page ───────────────────────────────────────────────────────────────────── */
+
+type AddForm = {
+  hostname: string;
+  ip_address: string;
+  location: string;
+  role: ApiDevice["role"];
+  ssh_username: string;
+  ssh_password: string;
+  ssh_port: number;
+};
+
+type EditForm = {
+  hostname: string;
+  ip_address: string;
+  location: string;
+  role: ApiDevice["role"];
+  ssh_username: string;
+  ssh_password: string;
+  ssh_port: number;
+};
+
+const EMPTY_ADD: AddForm = {
+  hostname: "",
+  ip_address: "",
+  location: "",
+  role: "access",
+  ssh_username: "",
+  ssh_password: "",
+  ssh_port: 22,
 };
 
 export default function DevicesPage() {
   const { user } = useAuth();
+  const toast = useToast();
   const isAdmin = user?.role === "admin";
   const canEdit = user?.role !== "viewer";
 
@@ -81,9 +148,14 @@ export default function DevicesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
 
-  const [addOpened, { open: openAdd, close: closeAdd }] = useDisclosure(false);
-  const [editOpened, { open: openEdit, close: closeEdit }] = useDisclosure(false);
-  const [deleteOpened, { open: openDelete, close: closeDelete }] = useDisclosure(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  const [addForm, setAddForm] = useState<AddForm>(EMPTY_ADD);
+  const [addErrors, setAddErrors] = useState<Partial<Record<keyof AddForm, string>>>({});
+  const [editForm, setEditForm] = useState<EditForm>({ ...EMPTY_ADD });
+  const [editErrors, setEditErrors] = useState<Partial<Record<keyof EditForm, string>>>({});
 
   const loadDevices = useCallback(async () => {
     setError(null);
@@ -101,41 +173,25 @@ export default function DevicesPage() {
     loadDevices();
   }, [loadDevices]);
 
-  const addForm = useForm({
-    initialValues: {
-      hostname: "",
-      ip_address: "",
-      location: "",
-      role: "access" as ApiDevice["role"],
-      ssh_username: "",
-      ssh_password: "",
-      ssh_port: 22,
-    },
-    validate: {
-      hostname: (v) => (v.trim().length < 2 ? "Hostname required" : null),
-      ip_address: (v) => (/^(\d{1,3}\.){3}\d{1,3}$/.test(v) ? null : "Invalid IP address"),
-      location: (v) => (v.trim().length < 2 ? "Location required" : null),
-      ssh_username: (v) => (v.trim().length < 1 ? "SSH username required" : null),
-      ssh_password: (v) => (v.length < 1 ? "SSH password required" : null),
-    },
-  });
+  const validateAdd = () => {
+    const e: Partial<Record<keyof AddForm, string>> = {};
+    if (addForm.hostname.trim().length < 2) e.hostname = "Hostname required";
+    if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(addForm.ip_address)) e.ip_address = "Invalid IP address";
+    if (addForm.location.trim().length < 2) e.location = "Location required";
+    if (addForm.ssh_username.trim().length < 1) e.ssh_username = "SSH username required";
+    if (addForm.ssh_password.length < 1) e.ssh_password = "SSH password required";
+    setAddErrors(e);
+    return Object.keys(e).length === 0;
+  };
 
-  const editForm = useForm({
-    initialValues: {
-      hostname: "",
-      ip_address: "",
-      location: "",
-      role: "access" as ApiDevice["role"],
-      ssh_username: "",
-      ssh_password: "",
-      ssh_port: 22,
-    },
-    validate: {
-      hostname: (v) => (v.trim().length < 2 ? "Hostname required" : null),
-      ip_address: (v) => (/^(\d{1,3}\.){3}\d{1,3}$/.test(v) ? null : "Invalid IP address"),
-      location: (v) => (v.trim().length < 2 ? "Location required" : null),
-    },
-  });
+  const validateEdit = () => {
+    const e: Partial<Record<keyof EditForm, string>> = {};
+    if (editForm.hostname.trim().length < 2) e.hostname = "Hostname required";
+    if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(editForm.ip_address)) e.ip_address = "Invalid IP address";
+    if (editForm.location.trim().length < 2) e.location = "Location required";
+    setEditErrors(e);
+    return Object.keys(e).length === 0;
+  };
 
   const filtered = deviceList.filter((d) => {
     const matchSearch =
@@ -149,30 +205,24 @@ export default function DevicesPage() {
   });
 
   const stats = {
-    total: deviceList.length,
-    online: deviceList.filter((d) => d.status === "online").length,
+    total:   deviceList.length,
+    online:  deviceList.filter((d) => d.status === "online").length,
     offline: deviceList.filter((d) => d.status === "offline").length,
     warning: deviceList.filter((d) => d.status === "warning").length,
   };
 
-  const handleAdd = async (values: typeof addForm.values) => {
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateAdd()) return;
     setSubmitting(true);
     try {
-      await devicesApi.create({
-        hostname: values.hostname,
-        ip_address: values.ip_address,
-        location: values.location,
-        role: values.role,
-        ssh_username: values.ssh_username,
-        ssh_password: values.ssh_password,
-        ssh_port: values.ssh_port,
-      });
-      addForm.reset();
-      closeAdd();
-      notifications.show({ title: "Device added", message: `${values.hostname} added to inventory.`, color: "green" });
+      await devicesApi.create(addForm);
+      setAddForm(EMPTY_ADD);
+      setAddOpen(false);
+      toast({ title: "Device added", message: `${addForm.hostname} added to inventory.`, type: "success" });
       loadDevices();
-    } catch (e) {
-      notifications.show({ title: "Error", message: e instanceof Error ? e.message : "Failed to add device", color: "red" });
+    } catch (err) {
+      toast({ title: "Error", message: err instanceof Error ? err.message : "Failed to add device", type: "error" });
     } finally {
       setSubmitting(false);
     }
@@ -180,7 +230,7 @@ export default function DevicesPage() {
 
   const handleEditOpen = (d: ApiDevice) => {
     setEditTarget(d);
-    editForm.setValues({
+    setEditForm({
       hostname: d.hostname,
       ip_address: d.ip_address,
       location: d.location,
@@ -189,36 +239,33 @@ export default function DevicesPage() {
       ssh_password: "",
       ssh_port: d.ssh_port,
     });
-    openEdit();
+    setEditErrors({});
+    setEditOpen(true);
   };
 
-  const handleEdit = async (values: typeof editForm.values) => {
-    if (!editTarget) return;
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editTarget || !validateEdit()) return;
     setSubmitting(true);
     try {
       const payload: Parameters<typeof devicesApi.update>[1] = {
-        hostname: values.hostname,
-        ip_address: values.ip_address,
-        location: values.location,
-        role: values.role,
-        ssh_port: values.ssh_port,
+        hostname: editForm.hostname,
+        ip_address: editForm.ip_address,
+        location: editForm.location,
+        role: editForm.role,
+        ssh_port: editForm.ssh_port,
       };
-      if (values.ssh_username) payload.ssh_username = values.ssh_username;
-      if (values.ssh_password) payload.ssh_password = values.ssh_password;
+      if (editForm.ssh_username) payload.ssh_username = editForm.ssh_username;
+      if (editForm.ssh_password) payload.ssh_password = editForm.ssh_password;
       await devicesApi.update(editTarget.id, payload);
-      closeEdit();
-      notifications.show({ title: "Device updated", message: `${values.hostname} updated.`, color: "blue" });
+      setEditOpen(false);
+      toast({ title: "Device updated", message: `${editForm.hostname} updated.`, type: "info" });
       loadDevices();
-    } catch (e) {
-      notifications.show({ title: "Error", message: e instanceof Error ? e.message : "Failed to update device", color: "red" });
+    } catch (err) {
+      toast({ title: "Error", message: err instanceof Error ? err.message : "Failed to update device", type: "error" });
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const handleDeleteOpen = (d: ApiDevice) => {
-    setDeleteTarget(d);
-    openDelete();
   };
 
   const handleDelete = async () => {
@@ -226,11 +273,11 @@ export default function DevicesPage() {
     setSubmitting(true);
     try {
       await devicesApi.delete(deleteTarget.id);
-      closeDelete();
-      notifications.show({ title: "Device removed", message: `${deleteTarget.hostname} removed.`, color: "red" });
+      setDeleteOpen(false);
+      toast({ title: "Device removed", message: `${deleteTarget.hostname} removed.`, type: "warn" });
       loadDevices();
-    } catch (e) {
-      notifications.show({ title: "Error", message: e instanceof Error ? e.message : "Failed to delete device", color: "red" });
+    } catch (err) {
+      toast({ title: "Error", message: err instanceof Error ? err.message : "Failed to delete device", type: "error" });
     } finally {
       setSubmitting(false);
     }
@@ -240,413 +287,450 @@ export default function DevicesPage() {
     setRefreshingId(id);
     try {
       await devicesApi.refresh(id);
-      notifications.show({ title: "Polling queued", message: "Device will be polled shortly.", color: "brand", autoClose: 3000 });
+      toast({ title: "Polling queued", message: "Device will be polled shortly.", type: "info" });
       setTimeout(loadDevices, 5000);
-    } catch (e) {
-      notifications.show({ title: "Error", message: e instanceof Error ? e.message : "Failed to refresh", color: "red" });
+    } catch (err) {
+      toast({ title: "Error", message: err instanceof Error ? err.message : "Failed to refresh", type: "error" });
     } finally {
       setRefreshingId(null);
     }
   };
 
   return (
-    <Box p="xl">
-      <Stack gap="xl">
-        <Group justify="space-between">
-          <Box>
-            <Title order={3} fw={600}>
-              Devices &amp; Inventory
-            </Title>
-            <Text c="dimmed" size="sm">
-              Dell OS9 switch inventory and status
-            </Text>
-          </Box>
-          {canEdit && (
-            <Button leftSection={<IconPlus size={16} />} color="brand" onClick={openAdd}>
-              Add Device
-            </Button>
-          )}
-        </Group>
-
-        {error && (
-          <Alert icon={<IconAlertCircle size={16} />} color="red" variant="light">
-            {error}
-          </Alert>
+    <div style={{ padding: 28 }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: "var(--qz-fs-xl)", fontWeight: 700, color: "var(--qz-fg)" }}>
+            Devices &amp; Inventory
+          </h2>
+          <p style={{ margin: "4px 0 0", fontSize: "var(--qz-fs-sm)", color: "var(--qz-fg-4)" }}>
+            Dell OS9 switch inventory and status
+          </p>
+        </div>
+        {canEdit && (
+          <button className="btn" onClick={() => { setAddForm(EMPTY_ADD); setAddErrors({}); setAddOpen(true); }}>
+            <Plus size={15} /> Add Device
+          </button>
         )}
+      </div>
 
-        <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="md">
-          {loading ? (
-            Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} h={72} radius="md" />)
-          ) : (
-            [
-              { label: "Total Devices", value: stats.total, color: "brand", icon: <IconDeviceDesktopAnalytics size={18} /> },
-              { label: "Online", value: stats.online, color: "green", icon: <IconWifi size={18} /> },
-              { label: "Offline", value: stats.offline, color: "red", icon: <IconWifiOff size={18} /> },
-              { label: "Warning", value: stats.warning, color: "yellow", icon: <IconAlertTriangle size={18} /> },
-            ].map((s) => (
-              <Paper key={s.label} p="md" radius="md" withBorder bg="dark.7">
-                <Group gap="sm">
-                  <ThemeIcon size={36} radius="md" color={s.color} variant="light">
-                    {s.icon}
-                  </ThemeIcon>
-                  <Box>
-                    <Text size="xl" fw={700}>
-                      {s.value}
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      {s.label}
-                    </Text>
-                  </Box>
-                </Group>
-              </Paper>
+      {error && (
+        <div className="alert alert-danger" style={{ marginBottom: 20 }}>
+          <AlertCircle size={15} />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Stat cards */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+          gap: 12,
+          marginBottom: 20,
+        }}
+      >
+        {loading
+          ? Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="skeleton" style={{ height: 72 }} />
             ))
-          )}
-        </SimpleGrid>
+          : [
+              { label: "Total Devices", value: stats.total,   icon: <Server size={16} />,        color: "var(--qz-accent)"  },
+              { label: "Online",        value: stats.online,  icon: <Wifi size={16} />,           color: "var(--qz-success)" },
+              { label: "Offline",       value: stats.offline, icon: <WifiOff size={16} />,        color: "var(--qz-danger)"  },
+              { label: "Warning",       value: stats.warning, icon: <AlertTriangle size={16} />,  color: "var(--qz-warn)"    },
+            ].map((s) => (
+              <div key={s.label} className="card" style={{ padding: "12px 14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: "var(--qz-radius-md)",
+                      background: `color-mix(in oklab, ${s.color} 15%, transparent)`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: s.color,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {s.icon}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "var(--qz-fs-xl)", fontWeight: 700, color: "var(--qz-fg)" }}>{s.value}</div>
+                    <div style={{ fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-4)" }}>{s.label}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+      </div>
 
-        <Paper radius="md" withBorder bg="dark.7">
-          <Box p="md">
-            <Group>
-              <TextInput
-                placeholder="Search hostname, IP, model, location..."
-                leftSection={<IconSearch size={16} />}
-                value={search}
-                onChange={(e) => setSearch(e.currentTarget.value)}
-                flex={1}
-                miw={200}
-              />
-              <NativeSelect
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.currentTarget.value)}
-                data={[
-                  { label: "All Statuses", value: "all" },
-                  { label: "Online", value: "online" },
-                  { label: "Warning", value: "warning" },
-                  { label: "Offline", value: "offline" },
-                  { label: "Unknown", value: "unknown" },
-                ]}
-                w={160}
-              />
-              <NativeSelect
-                value={roleFilter}
-                onChange={(e) => setRoleFilter(e.currentTarget.value)}
-                data={[
-                  { label: "All Roles", value: "all" },
-                  { label: "Core", value: "core" },
-                  { label: "Distribution", value: "distribution" },
-                  { label: "Access", value: "access" },
-                  { label: "Edge", value: "edge" },
-                ]}
-                w={160}
-              />
-            </Group>
-          </Box>
-          <Divider />
-          <ScrollArea>
-            <Table striped highlightOnHover verticalSpacing="sm" horizontalSpacing="md">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th w={32} />
-                  <Table.Th>Hostname</Table.Th>
-                  <Table.Th>IP Address</Table.Th>
-                  <Table.Th>Model</Table.Th>
-                  <Table.Th>Role</Table.Th>
-                  <Table.Th>Status</Table.Th>
-                  <Table.Th>OS Version</Table.Th>
-                  <Table.Th>Location</Table.Th>
-                  <Table.Th style={{ textAlign: "right" }}>Actions</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {loading ? (
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <Table.Tr key={i}>
-                      <Table.Td colSpan={9}>
-                        <Skeleton h={28} radius="sm" />
-                      </Table.Td>
-                    </Table.Tr>
-                  ))
-                ) : filtered.length === 0 ? (
-                  <Table.Tr>
-                    <Table.Td colSpan={9}>
-                      <Text c="dimmed" ta="center" py="xl" size="sm">
-                        {search || statusFilter !== "all" || roleFilter !== "all"
-                          ? "No devices match your filter"
-                          : "No devices found â€” add your first device to get started"}
-                      </Text>
-                    </Table.Td>
-                  </Table.Tr>
-                ) : (
-                  filtered.map((device) => {
-                    const statusMeta = STATUS_META[device.status as DeviceStatus] ?? STATUS_META.unknown;
-                    return (
-                      <>
-                        <Table.Tr key={device.id} style={{ cursor: "pointer" }}>
-                          <Table.Td>
-                            <ActionIcon
-                              variant="subtle"
-                              size="xs"
-                              color="gray"
-                              onClick={() =>
-                                setExpandedId((prev) => (prev === device.id ? null : device.id))
-                              }
+      {/* Table card */}
+      <div className="card">
+        {/* Filters */}
+        <div style={{ padding: "12px 14px", display: "flex", gap: 10, flexWrap: "wrap", borderBottom: "1px solid var(--qz-border)" }}>
+          <div className="input-wrap" style={{ flex: 1, minWidth: 200 }}>
+            <span className="input-icon"><Search size={14} /></span>
+            <input
+              className="input"
+              placeholder="Search hostname, IP, model, location..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <select
+            className="input"
+            style={{ width: 160 }}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="all">All Statuses</option>
+            <option value="online">Online</option>
+            <option value="warning">Warning</option>
+            <option value="offline">Offline</option>
+            <option value="unknown">Unknown</option>
+          </select>
+          <select
+            className="input"
+            style={{ width: 160 }}
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+          >
+            <option value="all">All Roles</option>
+            <option value="core">Core</option>
+            <option value="distribution">Distribution</option>
+            <option value="access">Access</option>
+            <option value="edge">Edge</option>
+          </select>
+        </div>
+
+        <div className="scroll-x">
+          <table className="qz-table">
+            <thead>
+              <tr>
+                <th style={{ width: 32 }} />
+                <th>Hostname</th>
+                <th>IP Address</th>
+                <th>Model</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>OS Version</th>
+                <th>Location</th>
+                <th style={{ textAlign: "right" }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={i}>
+                    <td colSpan={9}>
+                      <div className="skeleton" style={{ height: 24 }} />
+                    </td>
+                  </tr>
+                ))
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={9}
+                    style={{
+                      textAlign: "center",
+                      padding: "40px 20px",
+                      color: "var(--qz-fg-4)",
+                      fontSize: "var(--qz-fs-sm)",
+                    }}
+                  >
+                    {search || statusFilter !== "all" || roleFilter !== "all"
+                      ? "No devices match your filter"
+                      : "No devices found. Add your first device to get started."}
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((device) => {
+                  const statusMeta = STATUS_META[device.status as DeviceStatus] ?? STATUS_META.unknown;
+                  const isExpanded = expandedId === device.id;
+                  return (
+                    <React.Fragment key={device.id}>
+                      <tr>
+                        <td>
+                          <button
+                            className="btn-icon btn-icon-sm"
+                            onClick={() => setExpandedId((p) => (p === device.id ? null : device.id))}
+                          >
+                            {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                          </button>
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                            <div
+                              style={{
+                                width: 20,
+                                height: 20,
+                                borderRadius: "var(--qz-radius-sm)",
+                                background: "var(--qz-accent-soft)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                color: "var(--qz-accent)",
+                                flexShrink: 0,
+                              }}
                             >
-                              {expandedId === device.id ? (
-                                <IconChevronUp size={14} />
-                              ) : (
-                                <IconChevronDown size={14} />
-                              )}
-                            </ActionIcon>
-                          </Table.Td>
-                          <Table.Td>
-                            <Group gap="xs">
-                              <ThemeIcon
-                                size={22}
-                                radius="sm"
-                                color={ROLE_COLORS[device.role] ?? "gray"}
-                                variant="light"
+                              <Server size={11} />
+                            </div>
+                            <span
+                              style={{
+                                fontFamily: "var(--qz-font-mono)",
+                                fontSize: "var(--qz-fs-sm)",
+                                fontWeight: 500,
+                              }}
+                            >
+                              {device.hostname}
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <span style={{ fontFamily: "var(--qz-font-mono)", fontSize: "var(--qz-fs-sm)" }}>
+                            {device.ip_address}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: "var(--qz-fs-sm)" }}>{device.model ?? "N/A"}</td>
+                        <td>
+                          <span className={ROLE_BADGE[device.role] ?? "badge badge-neutral"}>
+                            {device.role}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={statusMeta.badgeClass}>
+                            {statusMeta.icon}
+                            {statusMeta.label}
+                          </span>
+                        </td>
+                        <td>
+                          <span
+                            style={{
+                              fontFamily: "var(--qz-font-mono)",
+                              fontSize: "var(--qz-fs-xs)",
+                              color: "var(--qz-fg-4)",
+                            }}
+                          >
+                            {device.os_version ?? "N/A"}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: "var(--qz-fs-sm)" }}>{device.location}</td>
+                        <td>
+                          <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                            <Link href={`/dashboard/devices/${device.id}`} className="btn-icon-sm accent" title="View configuration">
+                              <ExternalLink size={12} />
+                            </Link>
+                            <button
+                              className="btn-icon-sm info"
+                              title="Refresh status"
+                              onClick={() => handleRefresh(device.id)}
+                              disabled={refreshingId === device.id}
+                            >
+                              <RefreshCw size={12} style={refreshingId === device.id ? { animation: "spin 1s linear infinite" } : undefined} />
+                            </button>
+                            {canEdit && (
+                              <button className="btn-icon-sm" style={{ background: "rgba(79,179,255,0.12)", color: "var(--qz-info)", border: "1px solid rgba(79,179,255,0.3)" }} title="Edit device" onClick={() => handleEditOpen(device)}>
+                                <Pencil size={12} />
+                              </button>
+                            )}
+                            {isAdmin && (
+                              <button
+                                className="btn-icon-sm danger"
+                                title="Remove device"
+                                onClick={() => { setDeleteTarget(device); setDeleteOpen(true); }}
                               >
-                                <IconServer size={12} />
-                              </ThemeIcon>
-                              <Text size="sm" fw={500} ff="monospace">
-                                {device.hostname}
-                              </Text>
-                            </Group>
-                          </Table.Td>
-                          <Table.Td>
-                            <Text size="sm" ff="monospace">
-                              {device.ip_address}
-                            </Text>
-                          </Table.Td>
-                          <Table.Td>
-                            <Text size="sm">{device.model ?? "â€”"}</Text>
-                          </Table.Td>
-                          <Table.Td>
-                            <Badge size="sm" color={ROLE_COLORS[device.role] ?? "gray"} variant="light">
-                              {device.role}
-                            </Badge>
-                          </Table.Td>
-                          <Table.Td>
-                            <Badge
-                              size="sm"
-                              color={statusMeta.color}
-                              leftSection={statusMeta.icon}
-                              variant="light"
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr key={`${device.id}-detail`} style={{ background: "var(--qz-surface-sunken)" }}>
+                          <td colSpan={9} style={{ padding: "14px 18px" }}>
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+                                gap: 14,
+                              }}
                             >
-                              {statusMeta.label}
-                            </Badge>
-                          </Table.Td>
-                          <Table.Td>
-                            <Text size="xs" ff="monospace" c="dimmed">
-                              {device.os_version ?? "â€”"}
-                            </Text>
-                          </Table.Td>
-                          <Table.Td>
-                            <Text size="sm">{device.location}</Text>
-                          </Table.Td>
-                          <Table.Td>
-                            <Group gap={4} justify="flex-end">
-                              <Tooltip label="Refresh status">
-                                <ActionIcon
-                                  variant="light"
-                                  color="brand"
-                                  size="sm"
-                                  onClick={() => handleRefresh(device.id)}
-                                  loading={refreshingId === device.id}
-                                >
-                                  <IconRefresh size={13} />
-                                </ActionIcon>
-                              </Tooltip>
-                              {canEdit && (
-                                <Tooltip label="Edit device">
-                                  <ActionIcon
-                                    variant="light"
-                                    color="blue"
-                                    size="sm"
-                                    onClick={() => handleEditOpen(device)}
-                                  >
-                                    <IconEdit size={13} />
-                                  </ActionIcon>
-                                </Tooltip>
+                              {[
+                                { label: "Serial Number", value: device.serial_number ?? "Not polled", mono: true },
+                                { label: "Port Count",    value: device.port_count != null ? `${device.port_count} ports` : "Not polled", mono: false },
+                                { label: "Uptime",        value: device.uptime ?? "Not polled", mono: true },
+                                {
+                                  label: "Last Seen",
+                                  value: device.last_seen
+                                    ? new Date(device.last_seen).toLocaleString([], { dateStyle: "short", timeStyle: "short" })
+                                    : "Never",
+                                  mono: true,
+                                },
+                              ].map((detail) => (
+                                <div key={detail.label}>
+                                  <div style={{ fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-4)", marginBottom: 4 }}>
+                                    {detail.label}
+                                  </div>
+                                  {detail.mono ? (
+                                    <code>{detail.value}</code>
+                                  ) : (
+                                    <span style={{ fontSize: "var(--qz-fs-sm)", fontWeight: 500, color: "var(--qz-fg-2)" }}>
+                                      {detail.value}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                              {device.status !== "offline" && device.status !== "unknown" && (
+                                <>
+                                  <div>
+                                    <div style={{ fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-4)", marginBottom: 4 }}>CPU Usage</div>
+                                    <span
+                                      className={`badge ${device.cpu_pct != null && device.cpu_pct > 80 ? "badge-danger" : device.cpu_pct != null && device.cpu_pct > 60 ? "badge-warn" : "badge-success"}`}
+                                    >
+                                      {device.cpu_pct != null ? `${device.cpu_pct}%` : "N/A"}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-4)", marginBottom: 4 }}>Memory Usage</div>
+                                    <span
+                                      className={`badge ${device.mem_pct != null && device.mem_pct > 80 ? "badge-danger" : device.mem_pct != null && device.mem_pct > 60 ? "badge-warn" : "badge-success"}`}
+                                    >
+                                      {device.mem_pct != null ? `${device.mem_pct}%` : "N/A"}
+                                    </span>
+                                  </div>
+                                </>
                               )}
-                              {isAdmin && (
-                                <Tooltip label="Remove device">
-                                  <ActionIcon
-                                    variant="light"
-                                    color="red"
-                                    size="sm"
-                                    onClick={() => handleDeleteOpen(device)}
-                                  >
-                                    <IconTrash size={13} />
-                                  </ActionIcon>
-                                </Tooltip>
-                              )}
-                            </Group>
-                          </Table.Td>
-                        </Table.Tr>
-                        {expandedId === device.id && (
-                          <Table.Tr key={`${device.id}-detail`} bg="dark.8">
-                            <Table.Td colSpan={9} p="md">
-                              <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="md">
-                                {[
-                                  { label: "Serial Number", value: device.serial_number ?? "â€”", mono: true },
-                                  { label: "Port Count", value: device.port_count != null ? `${device.port_count} ports` : "â€”", mono: false },
-                                  { label: "Uptime", value: device.uptime ?? "â€”", mono: true },
-                                  {
-                                    label: "Last Seen",
-                                    value: device.last_seen
-                                      ? new Date(device.last_seen).toLocaleString([], { dateStyle: "short", timeStyle: "short" })
-                                      : "Never",
-                                    mono: true,
-                                  },
-                                ].map((detail) => (
-                                  <Box key={detail.label}>
-                                    <Text size="xs" c="dimmed" mb={2}>
-                                      {detail.label}
-                                    </Text>
-                                    {detail.mono ? (
-                                      <Code>{detail.value}</Code>
-                                    ) : (
-                                      <Text size="sm" fw={500}>
-                                        {detail.value}
-                                      </Text>
-                                    )}
-                                  </Box>
-                                ))}
-                                {device.status !== "offline" && device.status !== "unknown" && (
-                                  <>
-                                    <Box>
-                                      <Text size="xs" c="dimmed" mb={2}>
-                                        CPU Usage
-                                      </Text>
-                                      <Badge
-                                        color={
-                                          device.cpu_pct != null && device.cpu_pct > 80
-                                            ? "red"
-                                            : device.cpu_pct != null && device.cpu_pct > 60
-                                            ? "yellow"
-                                            : "green"
-                                        }
-                                        variant="light"
-                                      >
-                                        {device.cpu_pct != null ? `${device.cpu_pct}%` : "â€”"}
-                                      </Badge>
-                                    </Box>
-                                    <Box>
-                                      <Text size="xs" c="dimmed" mb={2}>
-                                        Memory Usage
-                                      </Text>
-                                      <Badge
-                                        color={
-                                          device.mem_pct != null && device.mem_pct > 80
-                                            ? "red"
-                                            : device.mem_pct != null && device.mem_pct > 60
-                                            ? "yellow"
-                                            : "green"
-                                        }
-                                        variant="light"
-                                      >
-                                        {device.mem_pct != null ? `${device.mem_pct}%` : "â€”"}
-                                      </Badge>
-                                    </Box>
-                                  </>
-                                )}
-                              </SimpleGrid>
-                            </Table.Td>
-                          </Table.Tr>
-                        )}
-                      </>
-                    );
-                  })
-                )}
-              </Table.Tbody>
-            </Table>
-          </ScrollArea>
-        </Paper>
-      </Stack>
+                            </div>
+                            <div style={{ marginTop: 12 }}>
+                              <Link
+                                href={`/dashboard/devices/${device.id}`}
+                                className="btn btn-ghost btn-sm"
+                              >
+                                <ExternalLink size={12} /> Full Configuration
+                              </Link>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {/* Add Device Modal */}
-      <Modal opened={addOpened} onClose={closeAdd} title="Add Device" centered size="md">
-        <form onSubmit={addForm.onSubmit(handleAdd)}>
-          <Stack gap="md">
-            <TextInput label="Hostname" placeholder="ACCESS-SW-10" {...addForm.getInputProps("hostname")} />
-            <TextInput label="IP Address" placeholder="10.0.2.10" {...addForm.getInputProps("ip_address")} />
-            <NativeSelect
-              label="Role"
-              data={[
-                { label: "Core", value: "core" },
-                { label: "Distribution", value: "distribution" },
-                { label: "Access", value: "access" },
-                { label: "Edge", value: "edge" },
-              ]}
-              {...addForm.getInputProps("role")}
-            />
-            <TextInput label="Location" placeholder="DC1 - Rack C10" {...addForm.getInputProps("location")} />
-            <Divider label={<Group gap={4}><IconKey size={12} />SSH Credentials</Group>} labelPosition="left" />
-            <TextInput label="SSH Username" placeholder="admin" {...addForm.getInputProps("ssh_username")} />
-            <PasswordInput label="SSH Password" placeholder="Switch enable password" {...addForm.getInputProps("ssh_password")} />
-            <NumberInput label="SSH Port" min={1} max={65535} {...addForm.getInputProps("ssh_port")} />
-            <Group justify="flex-end" mt="sm">
-              <Button variant="default" onClick={closeAdd} disabled={submitting}>
-                Cancel
-              </Button>
-              <Button type="submit" color="brand" loading={submitting}>
-                Add Device
-              </Button>
-            </Group>
-          </Stack>
+      <Modal opened={addOpen} onClose={() => setAddOpen(false)} title="Add Device" size="md">
+        <form onSubmit={handleAdd}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <Field label="Hostname" error={addErrors.hostname}>
+              <input className="input" placeholder="ACCESS-SW-10" value={addForm.hostname} onChange={(e) => setAddForm((f) => ({ ...f, hostname: e.target.value }))} />
+            </Field>
+            <Field label="IP Address" error={addErrors.ip_address}>
+              <input className="input" placeholder="10.0.2.10" value={addForm.ip_address} onChange={(e) => setAddForm((f) => ({ ...f, ip_address: e.target.value }))} />
+            </Field>
+            <Field label="Role">
+              <select className="input" value={addForm.role} onChange={(e) => setAddForm((f) => ({ ...f, role: e.target.value as ApiDevice["role"] }))}>
+                <option value="core">Core</option>
+                <option value="distribution">Distribution</option>
+                <option value="access">Access</option>
+                <option value="edge">Edge</option>
+              </select>
+            </Field>
+            <Field label="Location" error={addErrors.location}>
+              <input className="input" placeholder="DC1 - Rack C10" value={addForm.location} onChange={(e) => setAddForm((f) => ({ ...f, location: e.target.value }))} />
+            </Field>
+
+            <div className="divider-label">
+              <KeyRound size={12} />
+              SSH Credentials
+            </div>
+
+            <Field label="SSH Username" error={addErrors.ssh_username}>
+              <input className="input" placeholder="admin" value={addForm.ssh_username} onChange={(e) => setAddForm((f) => ({ ...f, ssh_username: e.target.value }))} />
+            </Field>
+            <Field label="SSH Password" error={addErrors.ssh_password}>
+              <PasswordField value={addForm.ssh_password} onChange={(v) => setAddForm((f) => ({ ...f, ssh_password: v }))} />
+            </Field>
+            <Field label="SSH Port">
+              <input className="input" type="number" min={1} max={65535} value={addForm.ssh_port} onChange={(e) => setAddForm((f) => ({ ...f, ssh_port: parseInt(e.target.value) || 22 }))} />
+            </Field>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 4 }}>
+              <button type="button" className="btn btn-ghost" onClick={() => setAddOpen(false)} disabled={submitting}>Cancel</button>
+              <button type="submit" className="btn" disabled={submitting}>
+                {submitting ? "Adding..." : "Add Device"}
+              </button>
+            </div>
+          </div>
         </form>
       </Modal>
 
       {/* Edit Device Modal */}
-      <Modal opened={editOpened} onClose={closeEdit} title="Edit Device" centered size="md">
-        <form onSubmit={editForm.onSubmit(handleEdit)}>
-          <Stack gap="md">
-            <TextInput label="Hostname" {...editForm.getInputProps("hostname")} />
-            <TextInput label="IP Address" {...editForm.getInputProps("ip_address")} />
-            <TextInput label="Location" {...editForm.getInputProps("location")} />
-            <NativeSelect
-              label="Role"
-              data={[
-                { label: "Core", value: "core" },
-                { label: "Distribution", value: "distribution" },
-                { label: "Access", value: "access" },
-                { label: "Edge", value: "edge" },
-              ]}
-              {...editForm.getInputProps("role")}
-            />
-            <Divider label={<Group gap={4}><IconKey size={12} />Update SSH Credentials (leave blank to keep existing)</Group>} labelPosition="left" />
-            <TextInput label="SSH Username" placeholder="Leave blank to keep current" {...editForm.getInputProps("ssh_username")} />
-            <PasswordInput label="SSH Password" placeholder="Leave blank to keep current" {...editForm.getInputProps("ssh_password")} />
-            <NumberInput label="SSH Port" min={1} max={65535} {...editForm.getInputProps("ssh_port")} />
-            <Group justify="flex-end" mt="sm">
-              <Button variant="default" onClick={closeEdit} disabled={submitting}>
-                Cancel
-              </Button>
-              <Button type="submit" color="blue" loading={submitting}>
-                Save Changes
-              </Button>
-            </Group>
-          </Stack>
+      <Modal opened={editOpen} onClose={() => setEditOpen(false)} title="Edit Device" size="md">
+        <form onSubmit={handleEdit}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <Field label="Hostname" error={editErrors.hostname}>
+              <input className="input" value={editForm.hostname} onChange={(e) => setEditForm((f) => ({ ...f, hostname: e.target.value }))} />
+            </Field>
+            <Field label="IP Address" error={editErrors.ip_address}>
+              <input className="input" value={editForm.ip_address} onChange={(e) => setEditForm((f) => ({ ...f, ip_address: e.target.value }))} />
+            </Field>
+            <Field label="Location" error={editErrors.location}>
+              <input className="input" value={editForm.location} onChange={(e) => setEditForm((f) => ({ ...f, location: e.target.value }))} />
+            </Field>
+            <Field label="Role">
+              <select className="input" value={editForm.role} onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value as ApiDevice["role"] }))}>
+                <option value="core">Core</option>
+                <option value="distribution">Distribution</option>
+                <option value="access">Access</option>
+                <option value="edge">Edge</option>
+              </select>
+            </Field>
+
+            <div className="divider-label">
+              <KeyRound size={12} />
+              Update SSH Credentials (leave blank to keep existing)
+            </div>
+
+            <Field label="SSH Username">
+              <input className="input" placeholder="Leave blank to keep current" value={editForm.ssh_username} onChange={(e) => setEditForm((f) => ({ ...f, ssh_username: e.target.value }))} />
+            </Field>
+            <Field label="SSH Password">
+              <PasswordField value={editForm.ssh_password} onChange={(v) => setEditForm((f) => ({ ...f, ssh_password: v }))} placeholder="Leave blank to keep current" />
+            </Field>
+            <Field label="SSH Port">
+              <input className="input" type="number" min={1} max={65535} value={editForm.ssh_port} onChange={(e) => setEditForm((f) => ({ ...f, ssh_port: parseInt(e.target.value) || 22 }))} />
+            </Field>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 4 }}>
+              <button type="button" className="btn btn-ghost" onClick={() => setEditOpen(false)} disabled={submitting}>Cancel</button>
+              <button type="submit" className="btn" disabled={submitting}>
+                {submitting ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
         </form>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
-      <Modal opened={deleteOpened} onClose={closeDelete} title="Remove Device" centered size="sm">
-        <Text size="sm" mb="lg">
-          Are you sure you want to remove <strong>{deleteTarget?.hostname}</strong> (
-          {deleteTarget?.ip_address}) from inventory? This action cannot be undone.
-        </Text>
-        <Group justify="flex-end">
-          <Button variant="default" onClick={closeDelete} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button color="red" onClick={handleDelete} loading={submitting}>
-            Remove Device
-          </Button>
-        </Group>
+      {/* Delete Modal */}
+      <Modal opened={deleteOpen} onClose={() => setDeleteOpen(false)} title="Remove Device" size="sm">
+        <p style={{ margin: "0 0 20px", fontSize: "var(--qz-fs-sm)", color: "var(--qz-fg-2)" }}>
+          Are you sure you want to remove <strong>{deleteTarget?.hostname}</strong> ({deleteTarget?.ip_address}) from inventory? This action cannot be undone.
+        </p>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button className="btn btn-ghost" onClick={() => setDeleteOpen(false)} disabled={submitting}>Cancel</button>
+          <button className="btn btn-danger" onClick={handleDelete} disabled={submitting}>
+            {submitting ? "Removing..." : "Remove Device"}
+          </button>
+        </div>
       </Modal>
-    </Box>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
   );
 }
-
-

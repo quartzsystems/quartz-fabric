@@ -1,9 +1,7 @@
 import "./globals.css";
 
 import type { Metadata } from "next";
-import { ColorSchemeScript, MantineProvider, mantineHtmlProps } from "@mantine/core";
-import { Notifications } from "@mantine/notifications";
-import { theme } from "@/lib/theme";
+import { Toaster } from "@/lib/toast";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
@@ -17,15 +15,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" {...mantineHtmlProps}>
+    <html lang="en">
       <head>
-        <ColorSchemeScript defaultColorScheme="dark" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+          rel="stylesheet"
+        />
       </head>
       <body>
-        <MantineProvider theme={theme} defaultColorScheme="dark">
-          <Notifications position="top-right" />
-          <Providers>{children}</Providers>
-        </MantineProvider>
+        <Providers>
+          {children}
+          <Toaster />
+        </Providers>
       </body>
     </html>
   );

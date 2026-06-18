@@ -6,6 +6,82 @@ use uuid::Uuid;
 use crate::models::*;
 use crate::ssh::PollResult;
 
+// ─── Config Templates ────────────────────────────────────────────────────────
+
+pub async fn get_all_templates(db: &SqlitePool) -> Result<Vec<crate::models::ConfigTemplate>> {
+    let rows = sqlx::query_as::<_, crate::models::ConfigTemplate>(
+        "SELECT * FROM config_templates ORDER BY name ASC",
+    )
+    .fetch_all(db)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn get_template_by_id(db: &SqlitePool, id: &str) -> Result<Option<crate::models::ConfigTemplate>> {
+    let row = sqlx::query_as::<_, crate::models::ConfigTemplate>(
+        "SELECT * FROM config_templates WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_optional(db)
+    .await?;
+    Ok(row)
+}
+
+pub async fn create_template(
+    db: &SqlitePool,
+    req: &crate::models::CreateTemplateRequest,
+) -> Result<crate::models::ConfigTemplate> {
+    let id = new_id();
+    let now = now();
+    sqlx::query(
+        "INSERT INTO config_templates (id, name, description, content, variables, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&id)
+    .bind(&req.name)
+    .bind(&req.description)
+    .bind(&req.content)
+    .bind(&req.variables)
+    .bind(&now)
+    .bind(&now)
+    .execute(db)
+    .await?;
+    Ok(get_template_by_id(db, &id).await?.unwrap())
+}
+
+pub async fn update_template(
+    db: &SqlitePool,
+    id: &str,
+    req: &crate::models::UpdateTemplateRequest,
+) -> Result<Option<crate::models::ConfigTemplate>> {
+    let now = now();
+    if let Some(v) = &req.name {
+        sqlx::query("UPDATE config_templates SET name = ?, updated_at = ? WHERE id = ?")
+            .bind(v).bind(&now).bind(id).execute(db).await?;
+    }
+    if let Some(v) = &req.description {
+        sqlx::query("UPDATE config_templates SET description = ?, updated_at = ? WHERE id = ?")
+            .bind(v).bind(&now).bind(id).execute(db).await?;
+    }
+    if let Some(v) = &req.content {
+        sqlx::query("UPDATE config_templates SET content = ?, updated_at = ? WHERE id = ?")
+            .bind(v).bind(&now).bind(id).execute(db).await?;
+    }
+    if let Some(v) = &req.variables {
+        sqlx::query("UPDATE config_templates SET variables = ?, updated_at = ? WHERE id = ?")
+            .bind(v).bind(&now).bind(id).execute(db).await?;
+    }
+    get_template_by_id(db, id).await
+}
+
+pub async fn delete_template(db: &SqlitePool, id: &str) -> Result<bool> {
+    let res = sqlx::query("DELETE FROM config_templates WHERE id = ?")
+        .bind(id)
+        .execute(db)
+        .await?;
+    Ok(res.rows_affected() > 0)
+}
+
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 pub async fn get_settings(db: &SqlitePool) -> Result<DbSettings> {
@@ -291,14 +367,38 @@ pub async fn delete_device(db: &SqlitePool, id: &str) -> Result<bool> {
     Ok(res.rows_affected() > 0)
 }
 
+pub async fn get_device_vlans(db: &SqlitePool, device_id: &str) -> Result<Vec<crate::models::VlanEntry>> {
+    let rows = sqlx::query_as::<_, crate::models::VlanEntry>(
+        "SELECT * FROM device_vlans WHERE device_id = ? ORDER BY vlan_id ASC",
+    )
+    .bind(device_id)
+    .fetch_all(db)
+    .await?;
+    Ok(rows)
+}
+
 pub async fn apply_poll_result(db: &SqlitePool, device_id: &str, result: &PollResult) -> Result<()> {
     let now = now();
+
+    // Count physical interfaces (Te/Fo/Hu/Gi/Ma) for port_count
+    let port_count: i64 = result
+        .interfaces
+        .iter()
+        .filter(|i| {
+            let n = i.name.to_uppercase();
+            n.starts_with("TE") || n.starts_with("FO") || n.starts_with("HU")
+                || n.starts_with("GI") || n.starts_with("MA") || n.starts_with("ETH")
+        })
+        .count() as i64;
+
+    let port_count_val = if port_count > 0 { Some(port_count) } else { None };
 
     // Update device main record
     sqlx::query(
         "UPDATE devices SET
             status = ?, os_version = COALESCE(?, os_version), model = COALESCE(?, model),
             serial_number = COALESCE(?, serial_number), uptime = ?,
+            port_count = COALESCE(?, port_count),
             cpu_pct = ?, mem_pct = ?, last_seen = ?, updated_at = ?
          WHERE id = ?",
     )
@@ -307,6 +407,7 @@ pub async fn apply_poll_result(db: &SqlitePool, device_id: &str, result: &PollRe
     .bind(&result.model)
     .bind(&result.serial_number)
     .bind(&result.uptime)
+    .bind(port_count_val)
     .bind(result.cpu_pct.map(|v| v as i64))
     .bind(result.mem_pct.map(|v| v as i64))
     .bind(&now)
@@ -377,6 +478,30 @@ pub async fn apply_poll_result(db: &SqlitePool, device_id: &str, result: &PollRe
         .bind(&now)
         .execute(db)
         .await?;
+    }
+
+    // Replace VLAN entries (only update if we got results)
+    if !result.vlans.is_empty() {
+        sqlx::query("DELETE FROM device_vlans WHERE device_id = ?")
+            .bind(device_id)
+            .execute(db)
+            .await?;
+        for vlan in &result.vlans {
+            sqlx::query(
+                "INSERT OR REPLACE INTO device_vlans (id, device_id, vlan_id, name, status, tagged_ports, untagged_ports, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(new_id())
+            .bind(device_id)
+            .bind(vlan.vlan_id)
+            .bind(&vlan.name)
+            .bind(&vlan.status)
+            .bind(&vlan.tagged_ports)
+            .bind(&vlan.untagged_ports)
+            .bind(&now)
+            .execute(db)
+            .await?;
+        }
     }
 
     Ok(())

@@ -9,10 +9,14 @@ mod ssh;
 mod state;
 
 use anyhow::{Context, Result};
-use axum::Router;
+use axum::{
+    http::{header, Method},
+    Router,
+};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::{str::FromStr, sync::Arc, time::Duration};
-use tower_http::cors::{Any, CorsLayer};
+use tokio::sync::RwLock;
+use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::info;
 
@@ -58,15 +62,20 @@ async fn main() -> Result<()> {
         seed_admin(&db, &config).await?;
     }
 
+    // Seed and load settings
+    db::seed_settings(&db, &config).await.context("Failed to seed settings")?;
+    let db_settings = db::get_settings(&db).await.context("Failed to load settings")?;
+
     let state = Arc::new(AppState {
         db: db.clone(),
         config: config.clone(),
+        settings: Arc::new(RwLock::new(db_settings)),
     });
 
     // Background polling
     polling::start(state.clone());
 
-    // CORS
+    // CORS — explicit lists required; allow_headers(Any) breaks preflight with specific origin
     let cors = CorsLayer::new()
         .allow_origin(
             config
@@ -74,8 +83,14 @@ async fn main() -> Result<()> {
                 .parse::<axum::http::HeaderValue>()
                 .context("Invalid CORS_ORIGIN")?,
         )
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::ACCEPT]);
 
     // Router
     let app = Router::new()

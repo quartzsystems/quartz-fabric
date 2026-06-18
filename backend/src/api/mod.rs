@@ -9,6 +9,7 @@ use crate::state::AppState;
 mod auth;
 mod devices;
 mod settings;
+mod templates;
 mod users;
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -36,6 +37,17 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/devices/{id}/interfaces", get(devices::interfaces))
         .route("/devices/{id}/arp", get(devices::arp))
         .route("/devices/{id}/mac", get(devices::mac_table))
+        .route("/devices/{id}/vlans", get(devices::vlans))
         .route("/devices/{id}/events", get(devices::events))
+        .route("/devices/{id}/exec", post(devices::exec))
+        // Config Templates
+        .route("/templates", get(templates::list).post(templates::create))
+        .route(
+            "/templates/{id}",
+            get(templates::get)
+                .put(templates::update)
+                .delete(templates::delete),
+        )
+        .route("/templates/{id}/push", post(templates::push))
         .with_state(state)
 }

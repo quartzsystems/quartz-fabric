@@ -1,23 +1,8 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Box,
-  Button,
-  Center,
-  Group,
-  Paper,
-  PasswordInput,
-  Stack,
-  Text,
-  TextInput,
-  Title,
-  ThemeIcon,
-  Alert,
-} from "@mantine/core";
-import { useForm } from "@mantine/form";
-import { IconNetwork, IconAlertCircle, IconLock, IconUser } from "@tabler/icons-react";
+import { Network, AlertCircle, User, Eye, EyeOff, Lock } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 
 export default function LoginPage() {
@@ -25,108 +10,192 @@ export default function LoginPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const [values, setValues] = useState({ username: "", password: "" });
+  const [errors, setErrors] = useState<Record<string, string | null>>({});
 
   useEffect(() => {
     if (user) router.replace("/dashboard");
   }, [user, router]);
 
-  const form = useForm({
-    initialValues: { username: "", password: "" },
-    validate: {
-      username: (v) => (v.trim().length === 0 ? "Username is required" : null),
-      password: (v) => (v.length === 0 ? "Password is required" : null),
-    },
-  });
+  const validate = () => {
+    const e: Record<string, string | null> = {};
+    e.username = values.username.trim().length === 0 ? "Username is required" : null;
+    e.password = values.password.length === 0 ? "Password is required" : null;
+    setErrors(e);
+    return Object.values(e).every((v) => v === null);
+  };
 
-  const handleSubmit = async (values: typeof form.values) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validate()) return;
     setError(null);
     setLoading(true);
     try {
       await login(values.username, values.password);
       router.replace("/dashboard");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Login failed");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Center h="100vh" bg="dark.9">
-      <Box w={{ base: "90%", sm: 420 }}>
-        <Stack align="center" mb="xl" gap="xs">
-          <Group gap="sm">
-            <ThemeIcon size={48} radius="md" color="brand" variant="filled">
-              <IconNetwork size={28} />
-            </ThemeIcon>
-            <Box>
-              <Title order={2} c="brand" fw={700} lts={1}>
-                QUARTZ FABRIC
-              </Title>
-              <Text size="xs" c="dimmed" lts={2} tt="uppercase">
-                Network Management Platform
-              </Text>
-            </Box>
-          </Group>
-        </Stack>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: "100vh",
+        background: "var(--qz-bg)",
+        padding: "24px",
+      }}
+    >
+      <div style={{ width: "100%", maxWidth: 420 }}>
+        {/* Wordmark */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 32, justifyContent: "center" }}>
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: "var(--qz-radius-md)",
+              background: "var(--qz-accent-soft)",
+              border: "1px solid var(--qz-accent-border)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "var(--qz-accent)",
+              flexShrink: 0,
+            }}
+          >
+            <Network size={26} />
+          </div>
+          <div>
+            <div
+              style={{
+                fontSize: "var(--qz-fs-lg)",
+                fontWeight: 800,
+                color: "var(--qz-accent)",
+                letterSpacing: "0.06em",
+              }}
+            >
+              QUARTZ FABRIC
+            </div>
+            <div
+              style={{
+                fontSize: "var(--qz-fs-xs)",
+                color: "var(--qz-fg-4)",
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+              }}
+            >
+              Network Management Platform
+            </div>
+          </div>
+        </div>
 
-        <Paper p="xl" radius="md" bg="dark.7" withBorder>
-          <Title order={4} mb="xs" fw={600}>
+        {/* Card */}
+        <div className="card" style={{ padding: 28 }}>
+          <h2
+            style={{
+              margin: "0 0 4px",
+              fontSize: "var(--qz-fs-md)",
+              fontWeight: 700,
+              color: "var(--qz-fg)",
+            }}
+          >
             Sign in
-          </Title>
-          <Text size="sm" c="dimmed" mb="lg">
+          </h2>
+          <p style={{ margin: "0 0 20px", fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-4)" }}>
             Dell OS9 Switch Management Console
-          </Text>
+          </p>
 
           {error && (
-            <Alert
-              icon={<IconAlertCircle size={16} />}
-              color="red"
-              mb="md"
-              radius="md"
-              variant="light"
-            >
-              {error}
-            </Alert>
+            <div className="alert alert-danger" style={{ marginBottom: 16 }}>
+              <AlertCircle size={15} />
+              <span>{error}</span>
+            </div>
           )}
 
-          <form onSubmit={form.onSubmit(handleSubmit)}>
-            <Stack gap="md">
-              <TextInput
-                label="Username"
-                placeholder="Enter your username"
-                leftSection={<IconUser size={16} />}
-                {...form.getInputProps("username")}
-                autoComplete="username"
-              />
-              <PasswordInput
-                label="Password"
-                placeholder="Enter your password"
-                leftSection={<IconLock size={16} />}
-                {...form.getInputProps("password")}
-                autoComplete="current-password"
-              />
-              <Button
+          <form onSubmit={handleSubmit}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label className="field-label">Username</label>
+                <div className="input-wrap">
+                  <span className="input-icon"><User size={14} /></span>
+                  <input
+                    className="input"
+                    type="text"
+                    placeholder="Enter your username"
+                    autoComplete="username"
+                    value={values.username}
+                    onChange={(e) => setValues((v) => ({ ...v, username: e.target.value }))}
+                  />
+                </div>
+                {errors.username && <div className="field-error">{errors.username}</div>}
+              </div>
+
+              <div>
+                <label className="field-label">Password</label>
+                <div className="input-wrap">
+                  <span className="input-icon"><Lock size={14} /></span>
+                  <input
+                    className="input"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Enter your password"
+                    autoComplete="current-password"
+                    value={values.password}
+                    onChange={(e) => setValues((v) => ({ ...v, password: e.target.value }))}
+                    style={{ paddingRight: 36 }}
+                  />
+                  <span className="input-suffix">
+                    <button
+                      type="button"
+                      className="btn-icon btn-icon-sm"
+                      onClick={() => setShowPassword((s) => !s)}
+                      tabIndex={-1}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff size={13} /> : <Eye size={13} />}
+                    </button>
+                  </span>
+                </div>
+                {errors.password && <div className="field-error">{errors.password}</div>}
+              </div>
+
+              <button
                 type="submit"
-                fullWidth
-                color="brand"
-                loading={loading}
-                mt="xs"
-                size="md"
+                className="btn"
+                disabled={loading}
+                style={{ width: "100%", justifyContent: "center", marginTop: 4, height: 40 }}
               >
-                Sign In
-              </Button>
-            </Stack>
+                {loading ? (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: "spin 1s linear infinite" }}><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+                    Signing in...
+                  </>
+                ) : (
+                  "Sign In"
+                )}
+              </button>
+            </div>
           </form>
+        </div>
 
-        </Paper>
-
-        <Text size="xs" c="dimmed" ta="center" mt="md">
-          Â© {new Date().getFullYear()} Quartz Systems &mdash; All rights reserved
-        </Text>
-      </Box>
-    </Center>
+        <p
+          style={{
+            textAlign: "center",
+            marginTop: 16,
+            fontSize: "var(--qz-fs-xs)",
+            color: "var(--qz-fg-4)",
+          }}
+        >
+          &copy; {new Date().getFullYear()} Quartz Systems &mdash; All rights reserved
+        </p>
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
   );
 }
-
-

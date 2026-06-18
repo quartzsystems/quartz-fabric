@@ -35,13 +35,17 @@ pub async fn poll_one(state: Arc<AppState>, device_id: &str) {
         }
     };
 
+    let (connect_timeout, read_timeout) = {
+        let s = state.settings.read().await;
+        (s.ssh_connect_timeout_secs as u64, s.ssh_read_timeout_secs as u64)
+    };
     let creds = ssh::DeviceCreds {
         ip: device.ip_address.clone(),
         port: device.ssh_port as u16,
         username: device.ssh_username.clone(),
         password: device.ssh_password.clone(),
-        connect_timeout_secs: state.config.ssh_connect_timeout_secs,
-        read_timeout_secs: state.config.ssh_read_timeout_secs,
+        connect_timeout_secs: connect_timeout,
+        read_timeout_secs: read_timeout,
     };
 
     info!("Polling {} ({})", device.hostname, device.ip_address);

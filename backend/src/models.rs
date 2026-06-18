@@ -189,6 +189,79 @@ pub struct SystemSettings {
     pub updated_at: String,
 }
 
+// ─── Config Templates ────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct ConfigTemplate {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub content: String,
+    pub variables: String, // JSON: [{key, label, placeholder?}]
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateTemplateRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub content: String,
+    pub variables: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateTemplateRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub content: Option<String>,
+    pub variables: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PushTemplateRequest {
+    pub device_ids: Vec<String>,
+    pub variables: std::collections::HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PushResult {
+    pub device_id: String,
+    pub hostname: String,
+    pub success: bool,
+    pub output: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PushTemplateResponse {
+    pub results: Vec<PushResult>,
+}
+
+// ─── VLAN ────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct VlanEntry {
+    pub id: String,
+    pub device_id: String,
+    pub vlan_id: i64,
+    pub name: Option<String>,
+    pub status: String,
+    pub tagged_ports: Option<String>,
+    pub untagged_ports: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ExecRequest {
+    pub command: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExecResponse {
+    pub output: String,
+}
+
 // ─── Summary ─────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]

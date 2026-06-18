@@ -177,6 +177,17 @@ export interface ApiEvent {
   created_at: string;
 }
 
+export interface ApiVlan {
+  id: string;
+  device_id: string;
+  vlan_id: number;
+  name: string | null;
+  status: string;
+  tagged_ports: string | null;
+  untagged_ports: string | null;
+  updated_at: string;
+}
+
 export const devices = {
   list: () => request<ApiDevice[]>("/devices"),
   get: (id: string) => request<ApiDevice>(`/devices/${id}`),
@@ -191,8 +202,14 @@ export const devices = {
   interfaces: (id: string) => request<ApiInterface[]>(`/devices/${id}/interfaces`),
   arp: (id: string) => request<ApiArpEntry[]>(`/devices/${id}/arp`),
   mac: (id: string) => request<ApiMacEntry[]>(`/devices/${id}/mac`),
+  vlans: (id: string) => request<ApiVlan[]>(`/devices/${id}/vlans`),
   events: (id: string, limit?: number) =>
     request<ApiEvent[]>(`/devices/${id}/events${limit ? `?limit=${limit}` : ""}`),
+  exec: (id: string, command: string) =>
+    request<{ output: string }>(`/devices/${id}/exec`, {
+      method: "POST",
+      body: JSON.stringify({ command }),
+    }),
 };
 
 // ─── Summary ──────────────────────────────────────────────────────────────────
@@ -211,6 +228,71 @@ export const summary = {
   get: () => request<ApiSummary>("/summary"),
 };
 
+// ─── Config Templates ─────────────────────────────────────────────────────────
+
+export interface TemplateVariable {
+  key: string;
+  label: string;
+  placeholder?: string;
+}
+
+export interface ApiTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  content: string;
+  variables: string; // JSON string: TemplateVariable[]
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateTemplatePayload {
+  name: string;
+  description?: string;
+  content: string;
+  variables: string; // JSON string
+}
+
+export interface UpdateTemplatePayload {
+  name?: string;
+  description?: string;
+  content?: string;
+  variables?: string;
+}
+
+export interface PushTemplatePayload {
+  device_ids: string[];
+  variables: Record<string, string>;
+}
+
+export interface PushResult {
+  device_id: string;
+  hostname: string;
+  success: boolean;
+  output: string | null;
+  error: string | null;
+}
+
+export interface PushTemplateResponse {
+  results: PushResult[];
+}
+
+export const templates = {
+  list: () => request<ApiTemplate[]>("/templates"),
+  get: (id: string) => request<ApiTemplate>(`/templates/${id}`),
+  create: (payload: CreateTemplatePayload) =>
+    request<ApiTemplate>("/templates", { method: "POST", body: JSON.stringify(payload) }),
+  update: (id: string, payload: UpdateTemplatePayload) =>
+    request<ApiTemplate>(`/templates/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  delete: (id: string) =>
+    request<void>(`/templates/${id}`, { method: "DELETE" }),
+  push: (id: string, payload: PushTemplatePayload) =>
+    request<PushTemplateResponse>(`/templates/${id}/push`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+};
+
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
 export interface ApiSettings {
@@ -223,6 +305,16 @@ export interface ApiSettings {
   cors_origin: string;
 }
 
+export interface UpdateSettingsPayload {
+  poll_interval_secs?: number;
+  poll_concurrency?: number;
+  ssh_connect_timeout_secs?: number;
+  ssh_read_timeout_secs?: number;
+  jwt_expiry_hours?: number;
+}
+
 export const settings = {
   get: () => request<ApiSettings>("/settings"),
+  update: (payload: UpdateSettingsPayload) =>
+    request<ApiSettings>("/settings", { method: "PUT", body: JSON.stringify(payload) }),
 };

@@ -1,39 +1,113 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import {
-  Box,
-  Grid,
-  Group,
-  Paper,
-  RingProgress,
-  SimpleGrid,
-  Skeleton,
-  Stack,
-  Text,
-  ThemeIcon,
-  Title,
-  Badge,
-  Table,
-  ScrollArea,
-  Alert,
-} from "@mantine/core";
-import {
-  IconDeviceDesktopAnalytics,
-  IconWifi,
-  IconWifiOff,
-  IconAlertTriangle,
-  IconUsers,
-  IconActivity,
-  IconAlertCircle,
-} from "@tabler/icons-react";
+  Server,
+  Wifi,
+  WifiOff,
+  AlertTriangle,
+  Users,
+  Activity,
+  AlertCircle,
+} from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { summary, type ApiSummary } from "@/lib/api";
 
-const SEVERITY_COLORS: Record<string, string> = {
-  error: "red",
-  warning: "yellow",
-  info: "blue",
+/* ── SVG donut chart ────────────────────────────────────────────────────────── */
+
+interface DonutSlice {
+  value: number;
+  color: string;
+  label: string;
+}
+
+function DonutChart({
+  slices,
+  size = 140,
+  thickness = 14,
+}: {
+  slices: DonutSlice[];
+  size?: number;
+  thickness?: number;
+}) {
+  const r = (size - thickness) / 2;
+  const cx = size / 2;
+  const cy = size / 2;
+  const circ = 2 * Math.PI * r;
+  const total = slices.reduce((s, sl) => s + sl.value, 0);
+
+  let cumulative = 0;
+  const paths = slices.map((sl) => {
+    const pct = total > 0 ? sl.value / total : 0;
+    const dashArray = pct * circ;
+    const dashOffset = -cumulative * circ;
+    cumulative += pct;
+    return { ...sl, dashArray, dashOffset };
+  });
+
+  const onlinePct = total > 0 ? Math.round((slices[0]?.value / total) * 1000) / 10 : 0;
+
+  return (
+    <div style={{ position: "relative", width: size, height: size }}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+        {total === 0 ? (
+          <circle
+            cx={cx}
+            cy={cy}
+            r={r}
+            fill="none"
+            stroke="var(--qz-border)"
+            strokeWidth={thickness}
+          />
+        ) : (
+          paths.map((p, i) => (
+            <circle
+              key={i}
+              cx={cx}
+              cy={cy}
+              r={r}
+              fill="none"
+              stroke={p.color}
+              strokeWidth={thickness}
+              strokeDasharray={`${p.dashArray} ${circ}`}
+              strokeDashoffset={p.dashOffset}
+              strokeLinecap="round"
+            />
+          ))
+        )}
+      </svg>
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+        }}
+      >
+        <span
+          style={{
+            fontSize: "var(--qz-fs-md)",
+            fontWeight: 700,
+            color: "var(--qz-fg)",
+          }}
+        >
+          {onlinePct}%
+        </span>
+        <span style={{ fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-4)" }}>Online</span>
+      </div>
+    </div>
+  );
+}
+
+/* ── Page ───────────────────────────────────────────────────────────────────── */
+
+const SEVERITY_BADGE: Record<string, string> = {
+  error:   "badge badge-danger",
+  warning: "badge badge-warn",
+  info:    "badge badge-info",
 };
 
 export default function DashboardPage() {
@@ -50,231 +124,240 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const total = data?.total_devices ?? 0;
-  const online = data?.online_devices ?? 0;
+  const total   = data?.total_devices   ?? 0;
+  const online  = data?.online_devices  ?? 0;
   const offline = data?.offline_devices ?? 0;
   const warning = data?.warning_devices ?? 0;
-  const onlinePct = total > 0 ? Math.round((online / total) * 1000) / 10 : 0;
-  const warnPct = total > 0 ? Math.round((warning / total) * 1000) / 10 : 0;
+  const onlinePct  = total > 0 ? Math.round((online  / total) * 1000) / 10 : 0;
+  const warnPct    = total > 0 ? Math.round((warning / total) * 1000) / 10 : 0;
   const offlinePct = total > 0 ? Math.round((offline / total) * 1000) / 10 : 0;
 
   const statCards = [
-    { label: "Total Devices", value: total, icon: <IconDeviceDesktopAnalytics size={22} />, color: "brand", sub: "Dell OS9 Switches" },
-    { label: "Online", value: online, icon: <IconWifi size={22} />, color: "green", sub: `${onlinePct}% uptime` },
-    { label: "Offline", value: offline, icon: <IconWifiOff size={22} />, color: "red", sub: offline > 0 ? "Requires attention" : "All clear" },
-    { label: "Warning", value: warning, icon: <IconAlertTriangle size={22} />, color: "yellow", sub: warning > 0 ? "Needs review" : "All clear" },
-    { label: "Active Users", value: data?.active_users ?? 0, icon: <IconUsers size={22} />, color: "blue", sub: `of ${data?.total_users ?? 0} total` },
-    { label: "Recent Events", value: data?.recent_events.length ?? 0, icon: <IconActivity size={22} />, color: "violet", sub: "Last 20 events" },
+    { label: "Total Devices",  value: total,                      icon: <Server        size={20} />, colorClass: "accent",  sub: "Dell OS9 Switches" },
+    { label: "Online",         value: online,                     icon: <Wifi          size={20} />, colorClass: "success", sub: `${onlinePct}% uptime` },
+    { label: "Offline",        value: offline,                    icon: <WifiOff       size={20} />, colorClass: "danger",  sub: offline  > 0 ? "Requires attention" : "All clear" },
+    { label: "Warning",        value: warning,                    icon: <AlertTriangle size={20} />, colorClass: "warn",    sub: warning  > 0 ? "Needs review"        : "All clear" },
+    { label: "Active Users",   value: data?.active_users  ?? 0,  icon: <Users         size={20} />, colorClass: "info",    sub: `of ${data?.total_users ?? 0} total` },
+    { label: "Recent Events",  value: data?.recent_events.length ?? 0, icon: <Activity size={20} />, colorClass: "neutral", sub: "Last 20 events" },
   ];
 
   return (
-    <Box p="xl">
-      <Stack gap="xl">
-        <Box>
-          <Title order={3} fw={600}>
-            Welcome back, {user?.display_name}
-          </Title>
-          <Text c="dimmed" size="sm">
-            Network overview &mdash;{" "}
-            {new Date().toLocaleDateString("en-US", {
-              weekday: "long",
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })}
-          </Text>
-        </Box>
+    <div style={{ padding: 28 }}>
+      {/* Header */}
+      <div style={{ marginBottom: 24 }}>
+        <h2 style={{ margin: 0, fontSize: "var(--qz-fs-xl)", fontWeight: 700, color: "var(--qz-fg)" }}>
+          Welcome back, {user?.display_name}
+        </h2>
+        <p style={{ margin: "4px 0 0", fontSize: "var(--qz-fs-sm)", color: "var(--qz-fg-4)" }}>
+          Network overview &mdash;{" "}
+          {new Date().toLocaleDateString("en-US", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          })}
+        </p>
+      </div>
 
-        {error && (
-          <Alert icon={<IconAlertCircle size={16} />} color="red" variant="light">
-            {error}
-          </Alert>
+      {error && (
+        <div className="alert alert-danger" style={{ marginBottom: 20 }}>
+          <AlertCircle size={15} />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Stat cards */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(6, 1fr)",
+          gap: 14,
+          marginBottom: 24,
+        }}
+      >
+        {statCards.map((s) =>
+          loading ? (
+            <div key={s.label} className="skeleton" style={{ height: 108 }} />
+          ) : (
+            <div
+              key={s.label}
+              className="card"
+              style={{ padding: 16 }}
+            >
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: "var(--qz-radius-md)",
+                  background: `var(--qz-${s.colorClass === "neutral" ? "accent" : s.colorClass}-soft, var(--qz-accent-soft))`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: s.colorClass === "neutral" ? "var(--qz-fg-3)" : `var(--qz-${s.colorClass === "accent" ? "accent" : s.colorClass === "success" ? "success" : s.colorClass === "danger" ? "danger" : s.colorClass === "warn" ? "warn" : "info"})`,
+                  marginBottom: 10,
+                }}
+              >
+                {s.icon}
+              </div>
+              <div style={{ fontSize: "var(--qz-fs-xl)", fontWeight: 700, color: "var(--qz-fg)" }}>
+                {s.value}
+              </div>
+              <div style={{ fontSize: "var(--qz-fs-sm)", fontWeight: 600, color: "var(--qz-fg-2)" }}>
+                {s.label}
+              </div>
+              <div style={{ fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-4)", marginTop: 2 }}>
+                {s.sub}
+              </div>
+            </div>
+          )
         )}
+      </div>
 
-        <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="md">
-          {statCards.map((stat) =>
-            loading ? (
-              <Skeleton key={stat.label} h={110} radius="md" />
+      {/* Device Health + Status Summary row */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 16,
+          marginBottom: 16,
+        }}
+      >
+        {/* Device Health */}
+        <div className="card">
+          <div className="card-hdr">
+            <span style={{ fontSize: "var(--qz-fs-md)", fontWeight: 600, color: "var(--qz-fg)" }}>
+              Device Health
+            </span>
+          </div>
+          <div style={{ padding: 20, display: "flex", alignItems: "center", gap: 40 }}>
+            {loading ? (
+              <div className="skeleton" style={{ width: 140, height: 140, borderRadius: "50%", flexShrink: 0 }} />
             ) : (
-              <Paper key={stat.label} p="md" radius="md" withBorder bg="dark.7">
-                <Group justify="space-between" mb="xs">
-                  <ThemeIcon size={36} radius="md" color={stat.color} variant="light">
-                    {stat.icon}
-                  </ThemeIcon>
-                </Group>
-                <Text size="xl" fw={700}>
-                  {stat.value}
-                </Text>
-                <Text size="sm" fw={500}>
-                  {stat.label}
-                </Text>
-                <Text size="xs" c="dimmed">
-                  {stat.sub}
-                </Text>
-              </Paper>
-            )
-          )}
-        </SimpleGrid>
-
-        <Grid gap="md">
-          <Grid.Col span={{ base: 12, md: 8 }}>
-            <Paper p="lg" radius="md" withBorder bg="dark.7" h="100%">
-              <Group justify="space-between" mb="md">
-                <Title order={5} fw={600}>
-                  Recent Events
-                </Title>
-                <Badge color="brand" variant="light" size="sm">
-                  Live
-                </Badge>
-              </Group>
-              {loading ? (
-                <Stack gap="xs">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Skeleton key={i} h={36} radius="sm" />
+              <>
+                <div style={{ flexShrink: 0 }}>
+                  <DonutChart
+                    size={140}
+                    thickness={14}
+                    slices={[
+                      { value: onlinePct,  color: "var(--qz-success)", label: "Online"  },
+                      { value: warnPct,    color: "var(--qz-warn)",    label: "Warning" },
+                      { value: offlinePct, color: "var(--qz-danger)",  label: "Offline" },
+                    ]}
+                  />
+                </div>
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
+                  {[
+                    { label: "Online",  pct: onlinePct,  color: "var(--qz-success)" },
+                    { label: "Warning", pct: warnPct,    color: "var(--qz-warn)"    },
+                    { label: "Offline", pct: offlinePct, color: "var(--qz-danger)"  },
+                  ].map((s) => (
+                    <div key={s.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: 2, background: s.color, flexShrink: 0 }} />
+                        <span style={{ fontSize: "var(--qz-fs-sm)", color: "var(--qz-fg-2)" }}>{s.label}</span>
+                      </div>
+                      <span style={{ fontSize: "var(--qz-fs-sm)", fontWeight: 600, color: "var(--qz-fg-3)", fontFamily: "var(--qz-font-mono)" }}>
+                        {s.pct}%
+                      </span>
+                    </div>
                   ))}
-                </Stack>
-              ) : (data?.recent_events.length ?? 0) === 0 ? (
-                <Text c="dimmed" size="sm" ta="center" py="xl">
-                  No recent events
-                </Text>
-              ) : (
-                <ScrollArea>
-                  <Table striped highlightOnHover>
-                    <Table.Thead>
-                      <Table.Tr>
-                        <Table.Th>Time</Table.Th>
-                        <Table.Th>Device</Table.Th>
-                        <Table.Th>Event</Table.Th>
-                        <Table.Th>Severity</Table.Th>
-                      </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                      {data!.recent_events.map((event) => (
-                        <Table.Tr key={event.id}>
-                          <Table.Td>
-                            <Text size="xs" ff="monospace" c="dimmed">
-                              {new Date(event.created_at).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </Text>
-                          </Table.Td>
-                          <Table.Td>
-                            <Text size="sm" fw={500}>
-                              {event.device_id}
-                            </Text>
-                          </Table.Td>
-                          <Table.Td>
-                            <Text size="sm">{event.message}</Text>
-                          </Table.Td>
-                          <Table.Td>
-                            <Badge
-                              size="sm"
-                              color={SEVERITY_COLORS[event.severity] ?? "gray"}
-                              variant="light"
-                            >
-                              {event.severity}
-                            </Badge>
-                          </Table.Td>
-                        </Table.Tr>
-                      ))}
-                    </Table.Tbody>
-                  </Table>
-                </ScrollArea>
-              )}
-            </Paper>
-          </Grid.Col>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
 
-          <Grid.Col span={{ base: 12, md: 4 }}>
-            <Stack gap="md">
-              <Paper p="lg" radius="md" withBorder bg="dark.7">
-                <Title order={5} fw={600} mb="md">
-                  Device Health
-                </Title>
-                {loading ? (
-                  <Skeleton h={140} radius="50%" mx="auto" w={140} />
-                ) : (
-                  <>
-                    <Group justify="center">
-                      <RingProgress
-                        size={140}
-                        thickness={14}
-                        roundCaps
-                        sections={[
-                          { value: onlinePct, color: "green" },
-                          { value: warnPct, color: "yellow" },
-                          { value: offlinePct, color: "red" },
-                        ]}
-                        label={
-                          <Text ta="center" size="xs" fw={600}>
-                            {onlinePct}%
-                            <br />
-                            Online
-                          </Text>
-                        }
-                      />
-                    </Group>
-                    <Stack gap="xs" mt="sm">
-                      {[
-                        { label: "Online", pct: onlinePct, color: "green" },
-                        { label: "Warning", pct: warnPct, color: "yellow" },
-                        { label: "Offline", pct: offlinePct, color: "red" },
-                      ].map((s) => (
-                        <Group key={s.label} justify="space-between">
-                          <Group gap="xs">
-                            <Box
-                              w={10}
-                              h={10}
-                              style={{
-                                borderRadius: 2,
-                                background: `var(--mantine-color-${s.color}-6)`,
-                              }}
-                            />
-                            <Text size="xs">{s.label}</Text>
-                          </Group>
-                          <Text size="xs" c="dimmed">
-                            {s.pct}%
-                          </Text>
-                        </Group>
-                      ))}
-                    </Stack>
-                  </>
-                )}
-              </Paper>
+        {/* Status Summary */}
+        <div className="card">
+          <div className="card-hdr">
+            <span style={{ fontSize: "var(--qz-fs-md)", fontWeight: 600, color: "var(--qz-fg)" }}>
+              Status Summary
+            </span>
+          </div>
+          <div style={{ padding: 20 }}>
+            {loading ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="skeleton" style={{ height: 24 }} />
+                ))}
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {[
+                  { label: "Total Devices",  value: total },
+                  { label: "Online",         value: online },
+                  { label: "Offline",        value: offline },
+                  { label: "Total Users",    value: data?.total_users  ?? 0 },
+                  { label: "Active Users",   value: data?.active_users ?? 0 },
+                ].map((r) => (
+                  <div key={r.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "var(--qz-fs-sm)", color: "var(--qz-fg-3)" }}>{r.label}</span>
+                    <span style={{ fontSize: "var(--qz-fs-sm)", fontWeight: 700, color: "var(--qz-accent)", fontFamily: "var(--qz-font-mono)" }}>
+                      {r.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
-              <Paper p="lg" radius="md" withBorder bg="dark.7">
-                <Title order={5} fw={600} mb="md">
-                  Status Summary
-                </Title>
-                {loading ? (
-                  <Stack gap="xs">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <Skeleton key={i} h={24} radius="sm" />
-                    ))}
-                  </Stack>
-                ) : (
-                  <Stack gap="sm">
-                    {[
-                      { label: "Total Devices", value: total },
-                      { label: "Total Users", value: data?.total_users ?? 0 },
-                      { label: "Active Users", value: data?.active_users ?? 0 },
-                    ].map((r) => (
-                      <Group key={r.label} justify="space-between">
-                        <Text size="sm">{r.label}</Text>
-                        <Text size="sm" fw={600} c="brand">
-                          {r.value}
-                        </Text>
-                      </Group>
-                    ))}
-                  </Stack>
-                )}
-              </Paper>
-            </Stack>
-          </Grid.Col>
-        </Grid>
-      </Stack>
-    </Box>
+      {/* Recent Events — full width */}
+      <div className="card">
+        <div className="card-hdr" style={{ justifyContent: "space-between" }}>
+          <span style={{ fontSize: "var(--qz-fs-md)", fontWeight: 600, color: "var(--qz-fg)" }}>
+            Recent Events
+          </span>
+          <span className="badge badge-accent">Live</span>
+        </div>
+        {loading ? (
+          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="skeleton" style={{ height: 32 }} />
+            ))}
+          </div>
+        ) : (data?.recent_events.length ?? 0) === 0 ? (
+          <div style={{ padding: "40px 20px", textAlign: "center", fontSize: "var(--qz-fs-sm)", color: "var(--qz-fg-4)" }}>
+            No recent events
+          </div>
+        ) : (
+          <div className="scroll-x">
+            <table className="qz-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Device</th>
+                  <th>Event</th>
+                  <th>Severity</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data!.recent_events.map((event) => (
+                  <tr key={event.id}>
+                    <td>
+                      <span style={{ fontFamily: "var(--qz-font-mono)", fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-4)" }}>
+                        {new Date(event.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </td>
+                    <td>
+                      <span style={{ fontSize: "var(--qz-fs-sm)", fontWeight: 500, fontFamily: "var(--qz-font-mono)" }}>
+                        {event.device_id}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: "var(--qz-fs-sm)" }}>{event.message}</td>
+                    <td>
+                      <span className={SEVERITY_BADGE[event.severity] ?? "badge badge-neutral"}>
+                        {event.severity}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
-
-

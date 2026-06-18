@@ -2,61 +2,78 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  ActionIcon,
-  Alert,
-  Badge,
-  Box,
-  Button,
-  Divider,
-  Group,
-  Modal,
-  NativeSelect,
-  Paper,
-  PasswordInput,
-  Skeleton,
-  Stack,
-  Table,
-  Text,
-  TextInput,
-  Title,
-  Tooltip,
-  Avatar,
-  ScrollArea,
-  ThemeIcon,
-} from "@mantine/core";
-import { useForm } from "@mantine/form";
-import { useDisclosure } from "@mantine/hooks";
-import { notifications } from "@mantine/notifications";
-import {
-  IconPlus,
-  IconTrash,
-  IconEdit,
-  IconSearch,
-  IconUsers,
-  IconShieldCheck,
-  IconUser,
-  IconEye,
-  IconAlertCircle,
-} from "@tabler/icons-react";
+  Plus,
+  Trash2,
+  Pencil,
+  Search,
+  Users,
+  ShieldCheck,
+  User,
+  Eye,
+  AlertCircle,
+} from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { users as usersApi, type ApiUser } from "@/lib/api";
+import { Modal } from "@/components/ui/modal";
+import { useToast } from "@/lib/toast";
 
 type Role = "admin" | "operator" | "viewer";
 
-const ROLE_META: Record<Role, { color: string; icon: React.ReactNode }> = {
-  admin: { color: "brand", icon: <IconShieldCheck size={12} /> },
-  operator: { color: "blue", icon: <IconUser size={12} /> },
-  viewer: { color: "gray", icon: <IconEye size={12} /> },
+const ROLE_META: Record<Role, { badgeClass: string; icon: React.ReactNode }> = {
+  admin:    { badgeClass: "badge badge-accent",  icon: <ShieldCheck size={10} /> },
+  operator: { badgeClass: "badge badge-blue",    icon: <User        size={10} /> },
+  viewer:   { badgeClass: "badge badge-neutral", icon: <Eye         size={10} /> },
 };
 
 const ROLE_OPTIONS = [
-  { label: "Admin - Full access", value: "admin" },
-  { label: "Operator - Read & write", value: "operator" },
-  { label: "Viewer - Read only", value: "viewer" },
+  { label: "Admin - Full access",    value: "admin"    },
+  { label: "Operator - Read & write",value: "operator" },
+  { label: "Viewer - Read only",     value: "viewer"   },
 ];
+
+function Field({
+  label, children, error,
+}: { label: string; children: React.ReactNode; error?: string | null }) {
+  return (
+    <div>
+      <label className="field-label">{label}</label>
+      {children}
+      {error && <div className="field-error">{error}</div>}
+    </div>
+  );
+}
+
+function PwField({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="input-wrap">
+      <input
+        className="input"
+        type={show ? "text" : "password"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{ paddingRight: 36 }}
+      />
+      <span className="input-suffix">
+        <button type="button" className="btn-icon btn-icon-sm" onClick={() => setShow((s) => !s)} tabIndex={-1}>
+          {show ? <Eye size={13} /> : <Eye size={13} />}
+        </button>
+      </span>
+    </div>
+  );
+}
+
+type CreateForm = { display_name: string; username: string; email: string; password: string; role: Role };
+type EditForm   = { display_name: string; email: string; role: Role; status: "active" | "inactive"; password: string; confirm_password: string };
+
+const EMPTY_CREATE: CreateForm = { display_name: "", username: "", email: "", password: "", role: "viewer" };
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
+  const toast = useToast();
+  const isAdmin = currentUser?.role === "admin";
+
   const [userList, setUserList] = useState<ApiUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,11 +81,18 @@ export default function UsersPage() {
   const [editTarget, setEditTarget] = useState<ApiUser | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ApiUser | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [createOpened, { open: openCreate, close: closeCreate }] = useDisclosure(false);
-  const [editOpened, { open: openEdit, close: closeEdit }] = useDisclosure(false);
-  const [deleteOpened, { open: openDelete, close: closeDelete }] = useDisclosure(false);
 
-  const isAdmin = currentUser?.role === "admin";
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen]     = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  const [createForm, setCreateForm] = useState<CreateForm>(EMPTY_CREATE);
+  const [createErrors, setCreateErrors] = useState<Partial<Record<keyof CreateForm, string>>>({});
+
+  const [editForm, setEditForm] = useState<EditForm>({
+    display_name: "", email: "", role: "viewer", status: "active", password: "", confirm_password: "",
+  });
+  const [editErrors, setEditErrors] = useState<Partial<Record<keyof EditForm, string>>>({});
 
   const loadUsers = useCallback(async () => {
     setError(null);
@@ -86,44 +110,26 @@ export default function UsersPage() {
     loadUsers();
   }, [loadUsers]);
 
-  const createForm = useForm({
-    initialValues: {
-      display_name: "",
-      username: "",
-      email: "",
-      password: "",
-      role: "viewer" as Role,
-    },
-    validate: {
-      display_name: (v) => (v.trim().length < 2 ? "Display name too short" : null),
-      username: (v) =>
-        v.trim().length < 3
-          ? "Username must be at least 3 characters"
-          : userList.some((u) => u.username === v.trim())
-          ? "Username already taken"
-          : null,
-      email: (v) => (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? "Invalid email address" : null),
-      password: (v) => (v.length < 8 ? "Password must be at least 8 characters" : null),
-    },
-  });
+  const validateCreate = () => {
+    const e: Partial<Record<keyof CreateForm, string>> = {};
+    if (createForm.display_name.trim().length < 2) e.display_name = "Display name too short";
+    if (createForm.username.trim().length < 3) e.username = "Username must be at least 3 characters";
+    else if (userList.some((u) => u.username === createForm.username.trim())) e.username = "Username already taken";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(createForm.email)) e.email = "Invalid email address";
+    if (createForm.password.length < 8) e.password = "Password must be at least 8 characters";
+    setCreateErrors(e);
+    return Object.keys(e).length === 0;
+  };
 
-  const editForm = useForm({
-    initialValues: {
-      display_name: "",
-      email: "",
-      role: "viewer" as Role,
-      status: "active" as "active" | "inactive",
-      password: "",
-      confirm_password: "",
-    },
-    validate: {
-      display_name: (v) => (v.trim().length < 2 ? "Display name too short" : null),
-      email: (v) => (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? "Invalid email address" : null),
-      password: (v) => (v.length > 0 && v.length < 8 ? "Must be at least 8 characters" : null),
-      confirm_password: (v, values) =>
-        values.password.length > 0 && v !== values.password ? "Passwords do not match" : null,
-    },
-  });
+  const validateEdit = () => {
+    const e: Partial<Record<keyof EditForm, string>> = {};
+    if (editForm.display_name.trim().length < 2) e.display_name = "Display name too short";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editForm.email)) e.email = "Invalid email address";
+    if (editForm.password.length > 0 && editForm.password.length < 8) e.password = "Must be at least 8 characters";
+    if (editForm.password.length > 0 && editForm.confirm_password !== editForm.password) e.confirm_password = "Passwords do not match";
+    setEditErrors(e);
+    return Object.keys(e).length === 0;
+  };
 
   const filtered = userList.filter(
     (u) =>
@@ -132,30 +138,24 @@ export default function UsersPage() {
       u.email.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleCreate = async (values: typeof createForm.values) => {
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateCreate()) return;
     setSubmitting(true);
     try {
       await usersApi.create({
-        display_name: values.display_name,
-        username: values.username,
-        email: values.email,
-        password: values.password,
-        role: values.role,
+        display_name: createForm.display_name,
+        username: createForm.username,
+        email: createForm.email,
+        password: createForm.password,
+        role: createForm.role,
       });
-      createForm.reset();
-      closeCreate();
-      notifications.show({
-        title: "User created",
-        message: `${values.display_name} has been added.`,
-        color: "green",
-      });
+      setCreateForm(EMPTY_CREATE);
+      setCreateOpen(false);
+      toast({ title: "User created", message: `${createForm.display_name} has been added.`, type: "success" });
       loadUsers();
-    } catch (e) {
-      notifications.show({
-        title: "Error",
-        message: e instanceof Error ? e.message : "Failed to create user",
-        color: "red",
-      });
+    } catch (err) {
+      toast({ title: "Error", message: err instanceof Error ? err.message : "Failed to create user", type: "error" });
     } finally {
       setSubmitting(false);
     }
@@ -163,7 +163,7 @@ export default function UsersPage() {
 
   const handleEditOpen = (u: ApiUser) => {
     setEditTarget(u);
-    editForm.setValues({
+    setEditForm({
       display_name: u.display_name,
       email: u.email,
       role: u.role as Role,
@@ -171,42 +171,31 @@ export default function UsersPage() {
       password: "",
       confirm_password: "",
     });
-    openEdit();
+    setEditErrors({});
+    setEditOpen(true);
   };
 
-  const handleEdit = async (values: typeof editForm.values) => {
-    if (!editTarget) return;
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editTarget || !validateEdit()) return;
     setSubmitting(true);
     try {
       const payload: Parameters<typeof usersApi.update>[1] = {
-        display_name: values.display_name,
-        email: values.email,
-        role: values.role,
-        status: values.status,
+        display_name: editForm.display_name,
+        email: editForm.email,
+        role: editForm.role,
+        status: editForm.status,
       };
-      if (values.password) payload.password = values.password;
+      if (editForm.password) payload.password = editForm.password;
       await usersApi.update(editTarget.id, payload);
-      closeEdit();
-      notifications.show({
-        title: "User updated",
-        message: `${values.display_name} has been updated.`,
-        color: "blue",
-      });
+      setEditOpen(false);
+      toast({ title: "User updated", message: `${editForm.display_name} has been updated.`, type: "info" });
       loadUsers();
-    } catch (e) {
-      notifications.show({
-        title: "Error",
-        message: e instanceof Error ? e.message : "Failed to update user",
-        color: "red",
-      });
+    } catch (err) {
+      toast({ title: "Error", message: err instanceof Error ? err.message : "Failed to update user", type: "error" });
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const handleDeleteOpen = (u: ApiUser) => {
-    setDeleteTarget(u);
-    openDelete();
   };
 
   const handleDelete = async () => {
@@ -214,320 +203,271 @@ export default function UsersPage() {
     setSubmitting(true);
     try {
       await usersApi.delete(deleteTarget.id);
-      closeDelete();
-      notifications.show({
-        title: "User removed",
-        message: `${deleteTarget.display_name} has been removed.`,
-        color: "red",
-      });
+      setDeleteOpen(false);
+      toast({ title: "User removed", message: `${deleteTarget.display_name} has been removed.`, type: "warn" });
       loadUsers();
-    } catch (e) {
-      notifications.show({
-        title: "Error",
-        message: e instanceof Error ? e.message : "Failed to delete user",
-        color: "red",
-      });
+    } catch (err) {
+      toast({ title: "Error", message: err instanceof Error ? err.message : "Failed to delete user", type: "error" });
     } finally {
       setSubmitting(false);
     }
   };
 
   const stats = {
-    total: userList.length,
+    total:  userList.length,
     active: userList.filter((u) => u.status === "active").length,
     admins: userList.filter((u) => u.role === "admin").length,
   };
 
   return (
-    <Box p="xl">
-      <Stack gap="xl">
-        <Group justify="space-between">
-          <Box>
-            <Title order={3} fw={600}>
-              User Management
-            </Title>
-            <Text c="dimmed" size="sm">
-              Manage platform users and access roles
-            </Text>
-          </Box>
-          {isAdmin && (
-            <Button leftSection={<IconPlus size={16} />} color="brand" onClick={openCreate}>
-              Add User
-            </Button>
-          )}
-        </Group>
-
-        {error && (
-          <Alert icon={<IconAlertCircle size={16} />} color="red" variant="light">
-            {error}
-          </Alert>
+    <div style={{ padding: 28 }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: "var(--qz-fs-xl)", fontWeight: 700, color: "var(--qz-fg)" }}>
+            User Management
+          </h2>
+          <p style={{ margin: "4px 0 0", fontSize: "var(--qz-fs-sm)", color: "var(--qz-fg-4)" }}>
+            Manage platform users and access roles
+          </p>
+        </div>
+        {isAdmin && (
+          <button className="btn" onClick={() => { setCreateForm(EMPTY_CREATE); setCreateErrors({}); setCreateOpen(true); }}>
+            <Plus size={15} /> Add User
+          </button>
         )}
+      </div>
 
-        <Group gap="md">
-          {loading ? (
-            <>
-              <Skeleton h={72} flex={1} radius="md" />
-              <Skeleton h={72} flex={1} radius="md" />
-              <Skeleton h={72} flex={1} radius="md" />
-            </>
-          ) : (
-            [
-              { label: "Total Users", value: stats.total, color: "brand", icon: <IconUsers size={16} /> },
-              { label: "Active", value: stats.active, color: "green", icon: <IconUser size={16} /> },
-              { label: "Admins", value: stats.admins, color: "blue", icon: <IconShieldCheck size={16} /> },
+      {error && (
+        <div className="alert alert-danger" style={{ marginBottom: 20 }}>
+          <AlertCircle size={15} />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Stat cards */}
+      <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+        {loading
+          ? Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton" style={{ flex: 1, minWidth: 120, height: 72 }} />)
+          : [
+              { label: "Total Users", value: stats.total,  color: "var(--qz-accent)",  icon: <Users size={15} /> },
+              { label: "Active",      value: stats.active, color: "var(--qz-success)", icon: <User  size={15} /> },
+              { label: "Admins",      value: stats.admins, color: "var(--qz-info)",    icon: <ShieldCheck size={15} /> },
             ].map((s) => (
-              <Paper key={s.label} px="lg" py="md" radius="md" withBorder bg="dark.7" flex={1}>
-                <Group gap="sm">
-                  <ThemeIcon size={32} radius="sm" color={s.color} variant="light">
+              <div key={s.label} className="card" style={{ flex: 1, minWidth: 140, padding: "12px 16px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div
+                    style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: "var(--qz-radius-sm)",
+                      background: `color-mix(in oklab, ${s.color} 14%, transparent)`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: s.color,
+                      flexShrink: 0,
+                    }}
+                  >
                     {s.icon}
-                  </ThemeIcon>
-                  <Box>
-                    <Text size="xl" fw={700}>
-                      {s.value}
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      {s.label}
-                    </Text>
-                  </Box>
-                </Group>
-              </Paper>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "var(--qz-fs-xl)", fontWeight: 700 }}>{s.value}</div>
+                    <div style={{ fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-4)" }}>{s.label}</div>
+                  </div>
+                </div>
+              </div>
             ))
-          )}
-        </Group>
+        }
+      </div>
 
-        <Paper radius="md" withBorder bg="dark.7">
-          <Box p="md">
-            <TextInput
+      {/* Table card */}
+      <div className="card">
+        <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--qz-border)" }}>
+          <div className="input-wrap" style={{ maxWidth: 360 }}>
+            <span className="input-icon"><Search size={14} /></span>
+            <input
+              className="input"
               placeholder="Search users by name, username, or email..."
-              leftSection={<IconSearch size={16} />}
               value={search}
-              onChange={(e) => setSearch(e.currentTarget.value)}
-              w={{ base: "100%", sm: 360 }}
+              onChange={(e) => setSearch(e.target.value)}
             />
-          </Box>
-          <Divider />
-          <ScrollArea>
-            <Table striped highlightOnHover verticalSpacing="sm" horizontalSpacing="md">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>User</Table.Th>
-                  <Table.Th>Username</Table.Th>
-                  <Table.Th>Role</Table.Th>
-                  <Table.Th>Status</Table.Th>
-                  <Table.Th>Last Login</Table.Th>
-                  {isAdmin && <Table.Th style={{ textAlign: "right" }}>Actions</Table.Th>}
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {loading ? (
-                  Array.from({ length: 4 }).map((_, i) => (
-                    <Table.Tr key={i}>
-                      <Table.Td colSpan={isAdmin ? 6 : 5}>
-                        <Skeleton h={28} radius="sm" />
-                      </Table.Td>
-                    </Table.Tr>
+          </div>
+        </div>
+        <div className="scroll-x">
+          <table className="qz-table">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Username</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Last Login</th>
+                {isAdmin && <th style={{ textAlign: "right" }}>Actions</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {loading
+                ? Array.from({ length: 4 }).map((_, i) => (
+                    <tr key={i}><td colSpan={isAdmin ? 6 : 5}><div className="skeleton" style={{ height: 24 }} /></td></tr>
                   ))
-                ) : filtered.length === 0 ? (
-                  <Table.Tr>
-                    <Table.Td colSpan={isAdmin ? 6 : 5}>
-                      <Text c="dimmed" ta="center" py="xl" size="sm">
+                : filtered.length === 0
+                ? (
+                    <tr>
+                      <td colSpan={isAdmin ? 6 : 5} style={{ textAlign: "center", padding: "40px", color: "var(--qz-fg-4)" }}>
                         {search ? "No users match your search" : "No users found"}
-                      </Text>
-                    </Table.Td>
-                  </Table.Tr>
-                ) : (
-                  filtered.map((u) => (
-                    <Table.Tr key={u.id}>
-                      <Table.Td>
-                        <Group gap="sm">
-                          <Avatar size="sm" color="brand" radius="xl">
-                            {u.display_name.charAt(0)}
-                          </Avatar>
-                          <Box>
-                            <Text size="sm" fw={500}>
+                      </td>
+                    </tr>
+                  )
+                : filtered.map((u) => (
+                    <tr key={u.id}>
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <span className="avatar avatar-sm">{u.display_name.charAt(0)}</span>
+                          <div>
+                            <div style={{ fontSize: "var(--qz-fs-sm)", fontWeight: 500, color: "var(--qz-fg)" }}>
                               {u.display_name}
-                            </Text>
-                            <Text size="xs" c="dimmed">
-                              {u.email}
-                            </Text>
-                          </Box>
-                        </Group>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm" ff="monospace">
+                            </div>
+                            <div style={{ fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-4)" }}>{u.email}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <span style={{ fontFamily: "var(--qz-font-mono)", fontSize: "var(--qz-fs-sm)" }}>
                           {u.username}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge
-                          size="sm"
-                          color={ROLE_META[u.role as Role]?.color ?? "gray"}
-                          leftSection={ROLE_META[u.role as Role]?.icon}
-                          variant="light"
-                        >
+                        </span>
+                      </td>
+                      <td>
+                        <span className={ROLE_META[u.role as Role]?.badgeClass ?? "badge badge-neutral"}>
+                          {ROLE_META[u.role as Role]?.icon}
                           {u.role}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge
-                          size="sm"
-                          color={u.status === "active" ? "green" : "gray"}
-                          variant="dot"
-                        >
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`badge ${u.status === "active" ? "badge-success" : "badge-neutral"}`}>
                           {u.status}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="xs" c="dimmed" ff="monospace">
+                        </span>
+                      </td>
+                      <td>
+                        <span style={{ fontFamily: "var(--qz-font-mono)", fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-4)" }}>
                           {u.last_login
-                            ? new Date(u.last_login).toLocaleString([], {
-                                dateStyle: "short",
-                                timeStyle: "short",
-                              })
+                            ? new Date(u.last_login).toLocaleString([], { dateStyle: "short", timeStyle: "short" })
                             : "Never"}
-                        </Text>
-                      </Table.Td>
+                        </span>
+                      </td>
                       {isAdmin && (
-                        <Table.Td>
-                          <Group gap={4} justify="flex-end">
-                            <Tooltip label="Edit user">
-                              <ActionIcon
-                                variant="light"
-                                color="blue"
-                                size="sm"
-                                onClick={() => handleEditOpen(u)}
-                                disabled={u.id === currentUser?.id}
-                              >
-                                <IconEdit size={14} />
-                              </ActionIcon>
-                            </Tooltip>
-                            <Tooltip label="Delete user">
-                              <ActionIcon
-                                variant="light"
-                                color="red"
-                                size="sm"
-                                onClick={() => handleDeleteOpen(u)}
-                                disabled={u.id === currentUser?.id}
-                              >
-                                <IconTrash size={14} />
-                              </ActionIcon>
-                            </Tooltip>
-                          </Group>
-                        </Table.Td>
+                        <td>
+                          <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                            <button
+                              className="btn-icon-sm"
+                              style={{ background: "rgba(79,179,255,0.12)", color: "var(--qz-info)", border: "1px solid rgba(79,179,255,0.3)" }}
+                              title="Edit user"
+                              onClick={() => handleEditOpen(u)}
+                              disabled={u.id === currentUser?.id}
+                            >
+                              <Pencil size={12} />
+                            </button>
+                            <button
+                              className="btn-icon-sm danger"
+                              title="Delete user"
+                              onClick={() => { setDeleteTarget(u); setDeleteOpen(true); }}
+                              disabled={u.id === currentUser?.id}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </td>
                       )}
-                    </Table.Tr>
+                    </tr>
                   ))
-                )}
-              </Table.Tbody>
-            </Table>
-          </ScrollArea>
-        </Paper>
-      </Stack>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {/* Create User Modal */}
-      <Modal opened={createOpened} onClose={closeCreate} title="Add New User" centered>
-        <form onSubmit={createForm.onSubmit(handleCreate)}>
-          <Stack gap="md">
-            <TextInput
-              label="Display Name"
-              placeholder="John Smith"
-              {...createForm.getInputProps("display_name")}
-            />
-            <TextInput
-              label="Username"
-              placeholder="jsmith"
-              {...createForm.getInputProps("username")}
-            />
-            <TextInput
-              label="Email"
-              placeholder="jsmith@quartz.systems"
-              {...createForm.getInputProps("email")}
-            />
-            <PasswordInput
-              label="Password"
-              placeholder="Minimum 8 characters"
-              {...createForm.getInputProps("password")}
-            />
-            <NativeSelect
-              label="Role"
-              data={ROLE_OPTIONS}
-              {...createForm.getInputProps("role")}
-            />
-            <Group justify="flex-end" mt="sm">
-              <Button variant="default" onClick={closeCreate} disabled={submitting}>
-                Cancel
-              </Button>
-              <Button type="submit" color="brand" loading={submitting}>
-                Create User
-              </Button>
-            </Group>
-          </Stack>
+      <Modal opened={createOpen} onClose={() => setCreateOpen(false)} title="Add New User">
+        <form onSubmit={handleCreate}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <Field label="Display Name" error={createErrors.display_name}>
+              <input className="input" placeholder="John Smith" value={createForm.display_name} onChange={(e) => setCreateForm((f) => ({ ...f, display_name: e.target.value }))} />
+            </Field>
+            <Field label="Username" error={createErrors.username}>
+              <input className="input" placeholder="jsmith" value={createForm.username} onChange={(e) => setCreateForm((f) => ({ ...f, username: e.target.value }))} />
+            </Field>
+            <Field label="Email" error={createErrors.email}>
+              <input className="input" type="email" placeholder="jsmith@quartz.systems" value={createForm.email} onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))} />
+            </Field>
+            <Field label="Password" error={createErrors.password}>
+              <PwField value={createForm.password} onChange={(v) => setCreateForm((f) => ({ ...f, password: v }))} placeholder="Minimum 8 characters" />
+            </Field>
+            <Field label="Role">
+              <select className="input" value={createForm.role} onChange={(e) => setCreateForm((f) => ({ ...f, role: e.target.value as Role }))}>
+                {ROLE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </Field>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 4 }}>
+              <button type="button" className="btn btn-ghost" onClick={() => setCreateOpen(false)} disabled={submitting}>Cancel</button>
+              <button type="submit" className="btn" disabled={submitting}>{submitting ? "Creating..." : "Create User"}</button>
+            </div>
+          </div>
         </form>
       </Modal>
 
       {/* Edit User Modal */}
       <Modal
-        opened={editOpened}
-        onClose={closeEdit}
-        title={"Edit User" + (editTarget ? " - " + editTarget.username : "")}
-        centered
+        opened={editOpen}
+        onClose={() => setEditOpen(false)}
+        title={`Edit User${editTarget ? " — " + editTarget.username : ""}`}
         size="md"
       >
-        <form onSubmit={editForm.onSubmit(handleEdit)}>
-          <Stack gap="md">
-            <TextInput label="Display Name" {...editForm.getInputProps("display_name")} />
-            <TextInput label="Email" {...editForm.getInputProps("email")} />
-            <NativeSelect
-              label="Role"
-              data={ROLE_OPTIONS}
-              {...editForm.getInputProps("role")}
-            />
-            <NativeSelect
-              label="Status"
-              data={[
-                { label: "Active", value: "active" },
-                { label: "Inactive", value: "inactive" },
-              ]}
-              {...editForm.getInputProps("status")}
-            />
-            <Divider label="Reset Password (optional)" labelPosition="left" />
-            <PasswordInput
-              label="New Password"
-              placeholder="Leave blank to keep current password"
-              {...editForm.getInputProps("password")}
-            />
-            <PasswordInput
-              label="Confirm Password"
-              placeholder="Repeat new password"
-              {...editForm.getInputProps("confirm_password")}
-            />
-            <Group justify="flex-end" mt="sm">
-              <Button variant="default" onClick={closeEdit} disabled={submitting}>
-                Cancel
-              </Button>
-              <Button type="submit" color="blue" loading={submitting}>
-                Save Changes
-              </Button>
-            </Group>
-          </Stack>
+        <form onSubmit={handleEdit}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <Field label="Display Name" error={editErrors.display_name}>
+              <input className="input" value={editForm.display_name} onChange={(e) => setEditForm((f) => ({ ...f, display_name: e.target.value }))} />
+            </Field>
+            <Field label="Email" error={editErrors.email}>
+              <input className="input" type="email" value={editForm.email} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} />
+            </Field>
+            <Field label="Role">
+              <select className="input" value={editForm.role} onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value as Role }))}>
+                {ROLE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Status">
+              <select className="input" value={editForm.status} onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value as "active" | "inactive" }))}>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </Field>
+
+            <div className="divider-label">Reset Password (optional)</div>
+
+            <Field label="New Password" error={editErrors.password}>
+              <PwField value={editForm.password} onChange={(v) => setEditForm((f) => ({ ...f, password: v }))} placeholder="Leave blank to keep current password" />
+            </Field>
+            <Field label="Confirm Password" error={editErrors.confirm_password}>
+              <PwField value={editForm.confirm_password} onChange={(v) => setEditForm((f) => ({ ...f, confirm_password: v }))} placeholder="Repeat new password" />
+            </Field>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 4 }}>
+              <button type="button" className="btn btn-ghost" onClick={() => setEditOpen(false)} disabled={submitting}>Cancel</button>
+              <button type="submit" className="btn" disabled={submitting}>{submitting ? "Saving..." : "Save Changes"}</button>
+            </div>
+          </div>
         </form>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
-      <Modal opened={deleteOpened} onClose={closeDelete} title="Remove User" centered size="sm">
-        <Text size="sm" mb="lg">
-          Are you sure you want to remove{" "}
-          <strong>{deleteTarget?.display_name}</strong>? This action cannot be undone.
-        </Text>
-        <Group justify="flex-end">
-          <Button variant="default" onClick={closeDelete} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button color="red" onClick={handleDelete} loading={submitting}>
-            Remove User
-          </Button>
-        </Group>
+      {/* Delete Modal */}
+      <Modal opened={deleteOpen} onClose={() => setDeleteOpen(false)} title="Remove User" size="sm">
+        <p style={{ margin: "0 0 20px", fontSize: "var(--qz-fs-sm)", color: "var(--qz-fg-2)" }}>
+          Are you sure you want to remove <strong>{deleteTarget?.display_name}</strong>? This action cannot be undone.
+        </p>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button className="btn btn-ghost" onClick={() => setDeleteOpen(false)} disabled={submitting}>Cancel</button>
+          <button className="btn btn-danger" onClick={handleDelete} disabled={submitting}>{submitting ? "Removing..." : "Remove User"}</button>
+        </div>
       </Modal>
-    </Box>
+    </div>
   );
 }
