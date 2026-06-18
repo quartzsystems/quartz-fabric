@@ -4,6 +4,7 @@ use regex::Regex;
 use russh::client;
 use russh::ChannelMsg;
 use russh_keys::PublicKey;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::time::{timeout, Duration};
 use tracing::debug;
@@ -87,13 +88,14 @@ impl client::Handler for SshHandler {
 // ─── Poll entry point ─────────────────────────────────────────────────────────
 
 const POLL_COMMANDS: &[&str] = &[
-    "show version",
-    "show processes cpu",
-    "show memory",
-    "show interfaces status",
-    "show arp",
-    "show mac-address-table",
-    "show vlan",
+    "show version",               // 0
+    "show processes cpu",         // 1
+    "show memory",                // 2
+    "show interfaces status",     // 3
+    "show running-config",        // 4
+    "show arp",                   // 5
+    "show mac-address-table",     // 6
+    "show vlan",                  // 7
 ];
 
 pub async fn poll_device(creds: DeviceCreds) -> Result<PollResult> {
@@ -131,13 +133,27 @@ pub async fn poll_device(creds: DeviceCreds) -> Result<PollResult> {
     if let Some(iface_out) = outputs.get(3) {
         result.interfaces = parse_interfaces(iface_out);
     }
-    if let Some(arp_out) = outputs.get(4) {
+    if let Some(rc_out) = outputs.get(4) {
+        let rc_data = parse_running_config_interfaces(rc_out);
+        for iface in &mut result.interfaces {
+            let key = canon_iface(&iface.name);
+            if let Some(data) = rc_data.get(&key) {
+                if let Some(d) = &data.0 {
+                    iface.description = Some(d.clone());
+                }
+                if let Some(d) = &data.1 {
+                    iface.duplex = Some(d.clone());
+                }
+            }
+        }
+    }
+    if let Some(arp_out) = outputs.get(5) {
         result.arp_entries = parse_arp(arp_out);
     }
-    if let Some(mac_out) = outputs.get(5) {
+    if let Some(mac_out) = outputs.get(6) {
         result.mac_entries = parse_mac(mac_out);
     }
-    if let Some(vlan_out) = outputs.get(6) {
+    if let Some(vlan_out) = outputs.get(7) {
         result.vlans = parse_vlans(vlan_out);
     }
 
@@ -458,10 +474,8 @@ fn parse_memory(output: &str) -> Option<u8> {
 }
 
 fn parse_interfaces(output: &str) -> Vec<InterfaceInfo> {
-    // Match line starting with a known interface prefix + number
     let port_re =
         Regex::new(r"(?i)^((?:Te|Fo|Hu|Gi|Mg|Ma|Po|Vl|Eth)\s+[\d/:]+)(.*)").unwrap();
-    // Find Up/Down status token
     let status_re = Regex::new(r"(?i)\b(Up|Down)\b").unwrap();
 
     output
@@ -478,9 +492,35 @@ fn parse_interfaces(output: &str) -> Vec<InterfaceInfo> {
             let description = if desc_raw.is_empty() { None } else { Some(desc_raw) };
 
             let after = rest[status_match.end()..].trim().to_string();
-            let mut tokens = after.split_whitespace();
-            let speed = tokens.next().map(|s| s.to_string());
-            let duplex = tokens.next().map(|s| s.to_string());
+            let tokens: Vec<&str> = after.split_whitespace().collect();
+            let mut idx = 0;
+
+            // Dell OS9 shows two state columns (admin + oper) on no-description lines;
+            // skip any extra Up/Down tokens so we land on the actual speed value.
+            while idx < tokens.len()
+                && (tokens[idx].eq_ignore_ascii_case("up")
+                    || tokens[idx].eq_ignore_ascii_case("down"))
+            {
+                idx += 1;
+            }
+
+            // Speed may be two tokens: "10000 Mbit/s" or "100000 Mbit" — combine them
+            let speed = if idx < tokens.len() {
+                let s = tokens[idx];
+                idx += 1;
+                if idx < tokens.len() && tokens[idx].to_ascii_lowercase().starts_with("mbit") {
+                    let combined = format!("{} {}", s, tokens[idx]);
+                    idx += 1;
+                    Some(combined)
+                } else {
+                    Some(s.to_string())
+                }
+            } else {
+                None
+            };
+
+            // Duplex is the next token after speed (Full, Half, Auto, etc.)
+            let duplex = tokens.get(idx).map(|s| s.to_string());
 
             Some(InterfaceInfo {
                 name,
@@ -491,6 +531,68 @@ fn parse_interfaces(output: &str) -> Vec<InterfaceInfo> {
             })
         })
         .collect()
+}
+
+/// Normalize a full or abbreviated interface name to lowercase abbreviated form,
+/// e.g. "TenGigabitEthernet 1/33" → "te 1/33", "Te 1/33" → "te 1/33".
+fn canon_iface(name: &str) -> String {
+    let s = name.trim().to_lowercase();
+    let s = s
+        .replace("tengigabitethernet", "te")
+        .replace("hundredgigabitethernet", "hu")
+        .replace("fortygigabitethernet", "fo")
+        .replace("gigabitethernet", "gi")
+        .replace("managementethernet", "ma")
+        .replace("portchannel", "po")
+        .replace("vlan", "vl");
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Parse `show running-config` and return a map of canonicalized interface name →
+/// (description, configured_duplex).  Both values are optional.
+fn parse_running_config_interfaces(
+    output: &str,
+) -> HashMap<String, (Option<String>, Option<String>)> {
+    let iface_re = Regex::new(
+        r"(?i)^interface\s+((?:TenGigabitEthernet|HundredGigabitEthernet|FortyGigabitEthernet|GigabitEthernet|ManagementEthernet|PortChannel|Vlan)\s+[\d/:]+)"
+    ).unwrap();
+
+    let mut result: HashMap<String, (Option<String>, Option<String>)> = HashMap::new();
+    let mut cur_name: Option<String> = None;
+    let mut cur_desc: Option<String> = None;
+    let mut cur_duplex: Option<String> = None;
+
+    for line in output.lines() {
+        if let Some(caps) = iface_re.captures(line) {
+            if let Some(n) = cur_name.take() {
+                result.insert(n, (cur_desc.take(), cur_duplex.take()));
+            }
+            cur_name = Some(canon_iface(caps[1].trim()));
+        } else if cur_name.is_some() {
+            let trimmed = line.trim();
+            if trimmed == "!" {
+                if let Some(n) = cur_name.take() {
+                    result.insert(n, (cur_desc.take(), cur_duplex.take()));
+                }
+            } else if let Some(desc) = trimmed.strip_prefix("description ") {
+                cur_desc = Some(desc.trim().to_string());
+            } else if trimmed.eq_ignore_ascii_case("auto-negotiation") {
+                cur_duplex = Some("Auto".to_string());
+            } else if trimmed.eq_ignore_ascii_case("no auto-negotiation") {
+                cur_duplex = Some("Full".to_string());
+            } else if let Some(val) = trimmed.strip_prefix("duplex ") {
+                cur_duplex = Some(match val.trim().to_lowercase().as_str() {
+                    "full" => "Full".to_string(),
+                    "half" => "Half".to_string(),
+                    _      => "Auto".to_string(),
+                });
+            }
+        }
+    }
+    if let Some(n) = cur_name.take() {
+        result.insert(n, (cur_desc.take(), cur_duplex.take()));
+    }
+    result
 }
 
 fn parse_arp(output: &str) -> Vec<ArpInfo> {
@@ -611,28 +713,71 @@ fn parse_vlan_rest(v: &mut VlanInfo, rest: &str, last_qualifier: &mut char) {
 }
 
 fn find_qualifier(s: &str) -> Option<usize> {
-    // Find a standalone T or U qualifier: a space, then T/U, then a space
-    let mut chars = s.char_indices().peekable();
-    while let Some((i, c)) = chars.next() {
-        if (c == 'T' || c == 'U') && i > 0 {
-            let before = s.as_bytes().get(i.wrapping_sub(1)).copied();
-            let after = s.as_bytes().get(i + 1).copied();
-            if before == Some(b' ') && (after == Some(b' ') || after == Some(b'\t')) {
-                return Some(i - 1); // return position of leading space
+    let bytes = s.as_bytes();
+    for i in 0..s.len() {
+        let c = bytes[i] as char;
+        if c == 'T' || c == 'U' {
+            let after = bytes.get(i + 1).copied();
+            if after == Some(b' ') || after == Some(b'\t') {
+                // At position 0, no leading space required; otherwise require a space before
+                if i == 0 {
+                    return Some(0);
+                }
+                let before = bytes[i - 1];
+                if before == b' ' || before == b'\t' {
+                    return Some(i - 1);
+                }
             }
         }
     }
     None
 }
 
-fn append_ports(v: &mut VlanInfo, qualifier: char, ports_str: &str) {
-    let cleaned: String = ports_str
-        .split(',')
-        .map(|p| p.trim())
-        .filter(|p| !p.is_empty())
-        .collect::<Vec<_>>()
-        .join(", ");
+// Expand a port range like "1/1-1/32" or "1/1-32" into individual port strings.
+// Returns vec of strings like ["Hu 1/1", "Hu 1/2", ...] or ["Hu 1/1"] if not a range.
+fn expand_port_range(prefix: &str, range_str: &str) -> Vec<String> {
+    let range_str = range_str.trim();
+    if let Some(dash) = range_str.find('-') {
+        let start_str = &range_str[..dash];
+        let end_str = &range_str[dash + 1..];
+        if let Some(slash) = start_str.find('/') {
+            let slot = &start_str[..slash];
+            if let Ok(start_port) = start_str[slash + 1..].parse::<u32>() {
+                let end_port: Option<u32> = if let Some(end_slash) = end_str.find('/') {
+                    end_str[end_slash + 1..].parse().ok()
+                } else {
+                    end_str.parse().ok()
+                };
+                if let Some(end_port) = end_port {
+                    if end_port >= start_port && (end_port - start_port) < 256 {
+                        return (start_port..=end_port)
+                            .map(|p| format!("{} {}/{}", prefix, slot, p))
+                            .collect();
+                    }
+                }
+            }
+        }
+    }
+    vec![format!("{} {}", prefix, range_str)]
+}
 
+fn append_ports(v: &mut VlanInfo, qualifier: char, ports_str: &str) {
+    let mut port_list: Vec<String> = Vec::new();
+    for part in ports_str.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        if let Some(space_pos) = part.find(' ') {
+            let prefix = &part[..space_pos];
+            let rest = &part[space_pos + 1..];
+            port_list.extend(expand_port_range(prefix, rest));
+        } else {
+            port_list.push(part.to_string());
+        }
+    }
+
+    let cleaned = port_list.join(", ");
     if cleaned.is_empty() {
         return;
     }

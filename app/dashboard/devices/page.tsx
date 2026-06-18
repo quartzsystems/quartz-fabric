@@ -554,7 +554,7 @@ export default function DevicesPage() {
                             <div
                               style={{
                                 display: "grid",
-                                gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+                                gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))",
                                 gap: 14,
                               }}
                             >
@@ -575,7 +575,7 @@ export default function DevicesPage() {
                                     {detail.label}
                                   </div>
                                   {detail.mono ? (
-                                    <code>{detail.value}</code>
+                                    <code style={{ whiteSpace: "nowrap" }}>{detail.value}</code>
                                   ) : (
                                     <span style={{ fontSize: "var(--qz-fs-sm)", fontWeight: 500, color: "var(--qz-fg-2)" }}>
                                       {detail.value}
