@@ -8,7 +8,7 @@ use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::models::*;
-use crate::ssh::{FanInfo, PollResult, PsuInfo, TempInfo};
+use crate::rest::{FanInfo, PollResult, PsuInfo, TempInfo};
 
 // ─── Config Templates ────────────────────────────────────────────────────────
 
@@ -90,8 +90,8 @@ pub async fn delete_template(db: &SqlitePool, id: &str) -> Result<bool> {
 
 pub async fn get_settings(db: &SqlitePool) -> Result<DbSettings> {
     let row = sqlx::query_as::<_, DbSettings>(
-        "SELECT poll_interval_secs, poll_concurrency, ssh_connect_timeout_secs,
-                ssh_read_timeout_secs, jwt_expiry_hours, updated_at
+        "SELECT poll_interval_secs, poll_concurrency, rest_timeout_secs,
+                jwt_expiry_hours, updated_at
          FROM system_settings WHERE id = 1",
     )
     .fetch_optional(db)
@@ -99,8 +99,7 @@ pub async fn get_settings(db: &SqlitePool) -> Result<DbSettings> {
     Ok(row.unwrap_or_else(|| DbSettings {
         poll_interval_secs: 300,
         poll_concurrency: 5,
-        ssh_connect_timeout_secs: 15,
-        ssh_read_timeout_secs: 30,
+        rest_timeout_secs: 30,
         jwt_expiry_hours: 8,
         updated_at: Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
     }))
@@ -113,14 +112,13 @@ pub async fn seed_settings(db: &SqlitePool, config: &crate::config::Config) -> R
     if count.0 == 0 {
         sqlx::query(
             "INSERT INTO system_settings
-             (id, poll_interval_secs, poll_concurrency, ssh_connect_timeout_secs,
-              ssh_read_timeout_secs, jwt_expiry_hours, updated_at)
-             VALUES (1, ?, ?, ?, ?, ?, datetime('now'))",
+             (id, poll_interval_secs, poll_concurrency, rest_timeout_secs,
+              jwt_expiry_hours, updated_at)
+             VALUES (1, ?, ?, ?, ?, datetime('now'))",
         )
         .bind(config.poll_interval_secs as i64)
         .bind(config.poll_concurrency as i64)
-        .bind(config.ssh_connect_timeout_secs as i64)
-        .bind(config.ssh_read_timeout_secs as i64)
+        .bind(config.rest_timeout_secs as i64)
         .bind(config.jwt_expiry_hours)
         .execute(db)
         .await?;
@@ -138,12 +136,8 @@ pub async fn update_settings(db: &SqlitePool, req: &UpdateSettingsRequest) -> Re
         sqlx::query("UPDATE system_settings SET poll_concurrency = ?, updated_at = ? WHERE id = 1")
             .bind(v).bind(&now).execute(db).await?;
     }
-    if let Some(v) = req.ssh_connect_timeout_secs {
-        sqlx::query("UPDATE system_settings SET ssh_connect_timeout_secs = ?, updated_at = ? WHERE id = 1")
-            .bind(v).bind(&now).execute(db).await?;
-    }
-    if let Some(v) = req.ssh_read_timeout_secs {
-        sqlx::query("UPDATE system_settings SET ssh_read_timeout_secs = ?, updated_at = ? WHERE id = 1")
+    if let Some(v) = req.rest_timeout_secs {
+        sqlx::query("UPDATE system_settings SET rest_timeout_secs = ?, updated_at = ? WHERE id = 1")
             .bind(v).bind(&now).execute(db).await?;
     }
     if let Some(v) = req.jwt_expiry_hours {
@@ -306,9 +300,9 @@ pub async fn get_device_by_id(db: &SqlitePool, id: &str) -> Result<Option<Device
 pub async fn create_device(db: &SqlitePool, req: &CreateDeviceRequest) -> Result<Device> {
     let id = new_id();
     let now = now();
-    let port = req.ssh_port.unwrap_or(22);
+    let port = req.rest_port.unwrap_or(8008);
     sqlx::query(
-        "INSERT INTO devices (id, hostname, ip_address, location, role, status, ssh_username, ssh_password, ssh_port, created_at, updated_at)
+        "INSERT INTO devices (id, hostname, ip_address, location, role, status, rest_username, rest_password, rest_port, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, 'unknown', ?, ?, ?, ?, ?)",
     )
     .bind(&id)
@@ -316,8 +310,8 @@ pub async fn create_device(db: &SqlitePool, req: &CreateDeviceRequest) -> Result
     .bind(&req.ip_address)
     .bind(&req.location)
     .bind(&req.role)
-    .bind(&req.ssh_username)
-    .bind(&req.ssh_password)
+    .bind(&req.rest_username)
+    .bind(&req.rest_password)
     .bind(port)
     .bind(&now)
     .bind(&now)
@@ -348,16 +342,16 @@ pub async fn update_device(
         sqlx::query("UPDATE devices SET role = ?, updated_at = ? WHERE id = ?")
             .bind(v).bind(&now).bind(id).execute(db).await?;
     }
-    if let Some(v) = &req.ssh_username {
-        sqlx::query("UPDATE devices SET ssh_username = ?, updated_at = ? WHERE id = ?")
+    if let Some(v) = &req.rest_username {
+        sqlx::query("UPDATE devices SET rest_username = ?, updated_at = ? WHERE id = ?")
             .bind(v).bind(&now).bind(id).execute(db).await?;
     }
-    if let Some(v) = &req.ssh_password {
-        sqlx::query("UPDATE devices SET ssh_password = ?, updated_at = ? WHERE id = ?")
+    if let Some(v) = &req.rest_password {
+        sqlx::query("UPDATE devices SET rest_password = ?, updated_at = ? WHERE id = ?")
             .bind(v).bind(&now).bind(id).execute(db).await?;
     }
-    if let Some(v) = &req.ssh_port {
-        sqlx::query("UPDATE devices SET ssh_port = ?, updated_at = ? WHERE id = ?")
+    if let Some(v) = &req.rest_port {
+        sqlx::query("UPDATE devices SET rest_port = ?, updated_at = ? WHERE id = ?")
             .bind(v).bind(&now).bind(id).execute(db).await?;
     }
     get_device_by_id(db, id).await

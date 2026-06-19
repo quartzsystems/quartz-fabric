@@ -119,7 +119,7 @@ export interface ApiDevice {
   mem_pct: number | null;
   manufacturer: string | null;
   last_seen: string | null;
-  ssh_port: number;
+  rest_port: number;
   created_at: string;
   updated_at: string;
 }
@@ -129,9 +129,9 @@ export interface CreateDevicePayload {
   ip_address: string;
   location: string;
   role: string;
-  ssh_username: string;
-  ssh_password: string;
-  ssh_port?: number;
+  rest_username: string;
+  rest_password: string;
+  rest_port?: number;
 }
 
 export interface UpdateDevicePayload {
@@ -139,9 +139,9 @@ export interface UpdateDevicePayload {
   ip_address?: string;
   location?: string;
   role?: string;
-  ssh_username?: string;
-  ssh_password?: string;
-  ssh_port?: number;
+  rest_username?: string;
+  rest_password?: string;
+  rest_port?: number;
 }
 
 export interface ApiInterface {
@@ -230,6 +230,20 @@ export interface ApiEnvironment {
   temps: ApiTemp[];
 }
 
+// ─── YANG Config Operations ───────────────────────────────────────────────────
+
+export type ConfigOp =
+  | { type: "iface_shutdown";      iface: string; shutdown: boolean }
+  | { type: "iface_description";   iface: string; description: string }
+  | { type: "iface_portmode";      iface: string; mode: string }
+  | { type: "vlan_create";         vlan_id: number; name?: string }
+  | { type: "vlan_delete";         vlan_id: number }
+  | { type: "vlan_description";    vlan_id: number; description: string }
+  | { type: "vlan_tagged_add";     vlan_id: number; iface: string }
+  | { type: "vlan_tagged_remove";  vlan_id: number; iface: string }
+  | { type: "vlan_untagged_add";   vlan_id: number; iface: string }
+  | { type: "vlan_untagged_remove";vlan_id: number; iface: string };
+
 export const devices = {
   list: () => request<ApiDevice[]>("/devices"),
   get: (id: string) => request<ApiDevice>(`/devices/${id}`),
@@ -253,6 +267,11 @@ export const devices = {
       body: JSON.stringify({ command }),
     }),
   environment: (id: string) => request<ApiEnvironment>(`/devices/${id}/environment`),
+  configure: (id: string, ops: ConfigOp[]) =>
+    request<{ output: string }>(`/devices/${id}/configure`, {
+      method: "POST",
+      body: JSON.stringify({ ops }),
+    }),
 };
 
 // ─── Summary ──────────────────────────────────────────────────────────────────
@@ -341,8 +360,7 @@ export const templates = {
 export interface ApiSettings {
   poll_interval_secs: number;
   poll_concurrency: number;
-  ssh_connect_timeout_secs: number;
-  ssh_read_timeout_secs: number;
+  rest_timeout_secs: number;
   jwt_expiry_hours: number;
   listen_addr: string;
   cors_origin: string;
@@ -351,8 +369,7 @@ export interface ApiSettings {
 export interface UpdateSettingsPayload {
   poll_interval_secs?: number;
   poll_concurrency?: number;
-  ssh_connect_timeout_secs?: number;
-  ssh_read_timeout_secs?: number;
+  rest_timeout_secs?: number;
   jwt_expiry_hours?: number;
 }
 

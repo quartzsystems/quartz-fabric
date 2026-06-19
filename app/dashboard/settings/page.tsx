@@ -92,11 +92,10 @@ export default function SettingsPage() {
   const isAdmin = user?.role === "admin";
 
   const [formValues, setFormValues] = useState<UpdateSettingsPayload>({
-    poll_interval_secs:        300,
-    poll_concurrency:          5,
-    ssh_connect_timeout_secs:  15,
-    ssh_read_timeout_secs:     30,
-    jwt_expiry_hours:          8,
+    poll_interval_secs: 300,
+    poll_concurrency:   5,
+    rest_timeout_secs:  30,
+    jwt_expiry_hours:   8,
   });
 
   useEffect(() => {
@@ -105,11 +104,10 @@ export default function SettingsPage() {
       .then((d) => {
         setData(d);
         setFormValues({
-          poll_interval_secs:       d.poll_interval_secs,
-          poll_concurrency:         d.poll_concurrency,
-          ssh_connect_timeout_secs: d.ssh_connect_timeout_secs,
-          ssh_read_timeout_secs:    d.ssh_read_timeout_secs,
-          jwt_expiry_hours:         d.jwt_expiry_hours,
+          poll_interval_secs: d.poll_interval_secs,
+          poll_concurrency:   d.poll_concurrency,
+          rest_timeout_secs:  d.rest_timeout_secs,
+          jwt_expiry_hours:   d.jwt_expiry_hours,
         });
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load settings"))
@@ -212,7 +210,7 @@ export default function SettingsPage() {
                     onChange={set("poll_interval_secs")}
                   />
                   <NumberField
-                    label="Max concurrent SSH connections"
+                    label="Max concurrent REST polls"
                     desc="Limits parallel device polls"
                     min={1}
                     max={50}
@@ -223,49 +221,34 @@ export default function SettingsPage() {
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   <ReadRow label="Poll interval"             value={`${data?.poll_interval_secs ?? "—"} s`} />
-                  <ReadRow label="Max concurrent connections" value={String(data?.poll_concurrency ?? "—")} />
+                  <ReadRow label="Max concurrent polls" value={String(data?.poll_concurrency ?? "—")} />
                 </div>
               )}
             </div>
           </div>
 
-          {/* SSH Timeouts */}
+          {/* REST API Timeout */}
           <div className="card">
             <div className="card-hdr">
               <Network size={15} style={{ color: "var(--qz-accent)" }} />
-              <span style={{ fontWeight: 600, fontSize: "var(--qz-fs-sm)" }}>SSH Timeouts</span>
+              <span style={{ fontWeight: 600, fontSize: "var(--qz-fs-sm)" }}>REST API Timeout</span>
             </div>
             <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
               {loading ? (
-                <>
-                  <div className="skeleton" style={{ height: 56 }} />
-                  <div className="skeleton" style={{ height: 56 }} />
-                </>
+                <div className="skeleton" style={{ height: 56 }} />
               ) : isAdmin ? (
-                <>
-                  <NumberField
-                    label="Connection timeout"
-                    desc="Seconds before giving up connecting"
-                    suffix="s"
-                    min={1}
-                    max={120}
-                    value={formValues.ssh_connect_timeout_secs ?? 15}
-                    onChange={set("ssh_connect_timeout_secs")}
-                  />
-                  <NumberField
-                    label="Read timeout"
-                    desc="Seconds to wait for command output"
-                    suffix="s"
-                    min={1}
-                    max={300}
-                    value={formValues.ssh_read_timeout_secs ?? 30}
-                    onChange={set("ssh_read_timeout_secs")}
-                  />
-                </>
+                <NumberField
+                  label="Request timeout"
+                  desc="Seconds before a REST API call is aborted"
+                  suffix="s"
+                  min={5}
+                  max={300}
+                  value={formValues.rest_timeout_secs ?? 30}
+                  onChange={set("rest_timeout_secs")}
+                />
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <ReadRow label="Connection timeout" value={`${data?.ssh_connect_timeout_secs ?? "—"} s`} />
-                  <ReadRow label="Read timeout"       value={`${data?.ssh_read_timeout_secs    ?? "—"} s`} />
+                  <ReadRow label="Request timeout" value={`${data?.rest_timeout_secs ?? "—"} s`} />
                 </div>
               )}
             </div>
@@ -341,7 +324,7 @@ export default function SettingsPage() {
         </div>
         <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
           <p style={{ margin: 0, fontSize: "var(--qz-fs-sm)", color: "var(--qz-fg-4)" }}>
-            Poll interval and concurrency changes take effect at the next poll cycle. SSH timeout changes apply immediately to the next connection attempt.
+            Poll interval and concurrency changes take effect at the next poll cycle. REST timeout changes apply immediately to the next request.
           </p>
           <p style={{ margin: 0, fontSize: "var(--qz-fs-sm)", color: "var(--qz-fg-4)" }}>
             Server address and CORS settings are read from <code>backend/.env</code> and require a backend restart.

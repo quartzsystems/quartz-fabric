@@ -12,8 +12,7 @@ pub struct Config {
     pub jwt_expiry_hours: i64,
     pub poll_interval_secs: u64,
     pub poll_concurrency: usize,
-    pub ssh_connect_timeout_secs: u64,
-    pub ssh_read_timeout_secs: u64,
+    pub rest_timeout_secs: u64,
     pub cors_origin: String,
     pub initial_admin_password: String,
 }
@@ -36,10 +35,7 @@ impl Config {
             poll_concurrency: env_var("POLL_CONCURRENCY")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(5),
-            ssh_connect_timeout_secs: env_var("SSH_CONNECT_TIMEOUT_SECS")
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(15),
-            ssh_read_timeout_secs: env_var("SSH_READ_TIMEOUT_SECS")
+            rest_timeout_secs: env_var("REST_TIMEOUT_SECS")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(30),
             cors_origin: env_var("CORS_ORIGIN")

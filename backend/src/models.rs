@@ -59,10 +59,10 @@ pub struct Device {
     pub manufacturer: Option<String>,
     pub last_seen: Option<String>,
     #[serde(skip_serializing)]
-    pub ssh_username: String,
+    pub rest_username: String,
     #[serde(skip_serializing)]
-    pub ssh_password: String,
-    pub ssh_port: i64,
+    pub rest_password: String,
+    pub rest_port: i64,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -73,9 +73,9 @@ pub struct CreateDeviceRequest {
     pub ip_address: String,
     pub location: String,
     pub role: String,
-    pub ssh_username: String,
-    pub ssh_password: String,
-    pub ssh_port: Option<i64>,
+    pub rest_username: String,
+    pub rest_password: String,
+    pub rest_port: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -84,9 +84,9 @@ pub struct UpdateDeviceRequest {
     pub ip_address: Option<String>,
     pub location: Option<String>,
     pub role: Option<String>,
-    pub ssh_username: Option<String>,
-    pub ssh_password: Option<String>,
-    pub ssh_port: Option<i64>,
+    pub rest_username: Option<String>,
+    pub rest_password: Option<String>,
+    pub rest_port: Option<i64>,
 }
 
 // ─── Interface ───────────────────────────────────────────────────────────────
@@ -167,8 +167,7 @@ pub struct UpdateProfileRequest {
 pub struct DbSettings {
     pub poll_interval_secs: i64,
     pub poll_concurrency: i64,
-    pub ssh_connect_timeout_secs: i64,
-    pub ssh_read_timeout_secs: i64,
+    pub rest_timeout_secs: i64,
     pub jwt_expiry_hours: i64,
     pub updated_at: String,
 }
@@ -177,8 +176,7 @@ pub struct DbSettings {
 pub struct UpdateSettingsRequest {
     pub poll_interval_secs: Option<i64>,
     pub poll_concurrency: Option<i64>,
-    pub ssh_connect_timeout_secs: Option<i64>,
-    pub ssh_read_timeout_secs: Option<i64>,
+    pub rest_timeout_secs: Option<i64>,
     pub jwt_expiry_hours: Option<i64>,
 }
 
@@ -186,8 +184,7 @@ pub struct UpdateSettingsRequest {
 pub struct SystemSettings {
     pub poll_interval_secs: i64,
     pub poll_concurrency: i64,
-    pub ssh_connect_timeout_secs: i64,
-    pub ssh_read_timeout_secs: i64,
+    pub rest_timeout_secs: i64,
     pub jwt_expiry_hours: i64,
     pub listen_addr: String,
     pub cors_origin: String,
@@ -265,6 +262,28 @@ pub struct ExecRequest {
 #[derive(Debug, Serialize)]
 pub struct ExecResponse {
     pub output: String,
+}
+
+// ─── YANG Config Operations ───────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ConfigOp {
+    IfaceShutdown     { iface: String, shutdown: bool },
+    IfaceDescription  { iface: String, description: String },
+    IfacePortmode     { iface: String, mode: String },
+    VlanCreate        { vlan_id: i64, name: Option<String> },
+    VlanDelete        { vlan_id: i64 },
+    VlanDescription   { vlan_id: i64, description: String },
+    VlanTaggedAdd     { vlan_id: i64, iface: String },
+    VlanTaggedRemove  { vlan_id: i64, iface: String },
+    VlanUntaggedAdd   { vlan_id: i64, iface: String },
+    VlanUntaggedRemove{ vlan_id: i64, iface: String },
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConfigureRequest {
+    pub ops: Vec<ConfigOp>,
 }
 
 // ─── Environment (PSU / Fan / Temp) ──────────────────────────────────────────

@@ -17,8 +17,7 @@ fn to_response(s: &crate::models::DbSettings, config: &crate::config::Config) ->
     SystemSettings {
         poll_interval_secs: s.poll_interval_secs,
         poll_concurrency: s.poll_concurrency,
-        ssh_connect_timeout_secs: s.ssh_connect_timeout_secs,
-        ssh_read_timeout_secs: s.ssh_read_timeout_secs,
+        rest_timeout_secs: s.rest_timeout_secs,
         jwt_expiry_hours: s.jwt_expiry_hours,
         listen_addr: config.listen_addr.clone(),
         cors_origin: config.cors_origin.clone(),

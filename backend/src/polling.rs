@@ -7,7 +7,7 @@ use tokio::sync::Semaphore;
 use tokio::time::{interval, Duration};
 use tracing::{error, info, warn};
 
-use crate::{db, ssh, state::AppState};
+use crate::{db, rest, state::AppState};
 
 pub fn start(state: Arc<AppState>) {
     let poll_secs = state.config.poll_interval_secs;
@@ -39,22 +39,21 @@ pub async fn poll_one(state: Arc<AppState>, device_id: &str) {
         }
     };
 
-    let (connect_timeout, read_timeout) = {
+    let timeout = {
         let s = state.settings.read().await;
-        (s.ssh_connect_timeout_secs as u64, s.ssh_read_timeout_secs as u64)
+        s.rest_timeout_secs as u64
     };
-    let creds = ssh::DeviceCreds {
+    let creds = rest::DeviceCreds {
         ip: device.ip_address.clone(),
-        port: device.ssh_port as u16,
-        username: device.ssh_username.clone(),
-        password: device.ssh_password.clone(),
-        connect_timeout_secs: connect_timeout,
-        read_timeout_secs: read_timeout,
+        port: device.rest_port as u16,
+        username: device.rest_username.clone(),
+        password: device.rest_password.clone(),
+        timeout_secs: timeout,
     };
 
     info!("Polling {} ({})", device.hostname, device.ip_address);
 
-    match ssh::poll_device(creds).await {
+    match rest::poll_device(creds).await {
         Ok(result) => {
             if let Err(e) = db::apply_poll_result(&state.db, &device.id, &result).await {
                 error!("apply_poll_result for {}: {e}", device.hostname);
@@ -67,7 +66,7 @@ pub async fn poll_one(state: Arc<AppState>, device_id: &str) {
             if let Err(db_e) = db::mark_device_offline(
                 &state.db,
                 &device.id,
-                &format!("SSH poll failed: {e}"),
+                &format!("REST poll failed: {e}"),
             )
             .await
             {

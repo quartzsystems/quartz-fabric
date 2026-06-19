@@ -16,10 +16,11 @@ use crate::{
     db,
     error::AppError,
     models::{
-        ArpEntry, CreateDeviceRequest, Device, DeviceEvent, DeviceInterface, EnvironmentResponse,
-        ExecRequest, ExecResponse, MacEntry, Summary, UpdateDeviceRequest, VlanEntry,
+        ArpEntry, ConfigureRequest, CreateDeviceRequest, Device, DeviceEvent, DeviceInterface,
+        EnvironmentResponse, ExecRequest, ExecResponse, MacEntry, Summary, UpdateDeviceRequest,
+        VlanEntry,
     },
-    polling, ssh,
+    polling, rest,
     state::AppState,
 };
 
@@ -198,6 +199,90 @@ pub async fn vlans(
     Ok(Json(rows))
 }
 
+pub async fn yang_fetch(
+    AuthUser(user): AuthUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(q): Query<YangFetchQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if user.role != "admin" {
+        return Err(AppError::Forbidden);
+    }
+    let device = db::get_device_by_id(&state.db, &id)
+        .await
+        .map_err(AppError::Internal)?
+        .ok_or(AppError::NotFound)?;
+    let settings = state.settings.read().await;
+    let creds = rest::DeviceCreds {
+        ip: device.ip_address.clone(),
+        port: device.rest_port as u16,
+        username: device.rest_username.clone(),
+        password: device.rest_password.clone(),
+        timeout_secs: settings.rest_timeout_secs.max(60) as u64,
+    };
+    drop(settings);
+    let result = rest::yang_fetch(&creds, &q.path).await.map_err(AppError::Internal)?;
+    Ok(Json(result))
+}
+
+#[derive(Deserialize)]
+pub struct YangFetchQuery {
+    pub path: String,
+}
+
+pub async fn yang_discover(
+    AuthUser(user): AuthUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if user.role != "admin" {
+        return Err(AppError::Forbidden);
+    }
+    let device = db::get_device_by_id(&state.db, &id)
+        .await
+        .map_err(AppError::Internal)?
+        .ok_or(AppError::NotFound)?;
+    let settings = state.settings.read().await;
+    let creds = rest::DeviceCreds {
+        ip: device.ip_address.clone(),
+        port: device.rest_port as u16,
+        username: device.rest_username.clone(),
+        password: device.rest_password.clone(),
+        timeout_secs: settings.rest_timeout_secs.max(60) as u64,
+    };
+    drop(settings);
+    let result = rest::discover_yang(&creds).await.map_err(AppError::Internal)?;
+    Ok(Json(result))
+}
+
+pub async fn configure(
+    AuthUser(user): AuthUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(req): Json<ConfigureRequest>,
+) -> Result<Json<ExecResponse>, AppError> {
+    if user.role == "viewer" {
+        return Err(AppError::Forbidden);
+    }
+    let device = db::get_device_by_id(&state.db, &id)
+        .await
+        .map_err(AppError::Internal)?
+        .ok_or(AppError::NotFound)?;
+    let settings = state.settings.read().await;
+    let creds = rest::DeviceCreds {
+        ip: device.ip_address.clone(),
+        port: device.rest_port as u16,
+        username: device.rest_username.clone(),
+        password: device.rest_password.clone(),
+        timeout_secs: settings.rest_timeout_secs.max(60) as u64,
+    };
+    drop(settings);
+    let output = rest::apply_config_ops(creds, &req.ops)
+        .await
+        .map_err(AppError::Internal)?;
+    Ok(Json(ExecResponse { output }))
+}
+
 pub async fn exec(
     AuthUser(user): AuthUser,
     State(state): State<Arc<AppState>>,
@@ -213,17 +298,16 @@ pub async fn exec(
         .ok_or(AppError::NotFound)?;
 
     let settings = state.settings.read().await;
-    let creds = ssh::DeviceCreds {
+    let creds = rest::DeviceCreds {
         ip: device.ip_address.clone(),
-        port: device.ssh_port as u16,
-        username: device.ssh_username.clone(),
-        password: device.ssh_password.clone(),
-        connect_timeout_secs: settings.ssh_connect_timeout_secs as u64,
-        read_timeout_secs: settings.ssh_read_timeout_secs.max(60) as u64,
+        port: device.rest_port as u16,
+        username: device.rest_username.clone(),
+        password: device.rest_password.clone(),
+        timeout_secs: settings.rest_timeout_secs.max(60) as u64,
     };
     drop(settings);
 
-    let output = ssh::exec_command(creds, &req.command)
+    let output = rest::exec_command(creds, &req.command)
         .await
         .map_err(|e| AppError::Internal(e))?;
 

@@ -45,6 +45,9 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/devices/{id}/events", get(devices::events))
         .route("/devices/{id}/environment", get(devices::environment))
         .route("/devices/{id}/exec", post(devices::exec))
+        .route("/devices/{id}/configure", post(devices::configure))
+        .route("/devices/{id}/yang-discover", get(devices::yang_discover))
+        .route("/devices/{id}/yang-fetch", get(devices::yang_fetch))
         // Config Templates
         .route("/templates", get(templates::list).post(templates::create))
         .route(

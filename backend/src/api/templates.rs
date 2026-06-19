@@ -19,7 +19,7 @@ use crate::{
         ConfigTemplate, CreateTemplateRequest, PushResult, PushTemplateRequest,
         PushTemplateResponse, UpdateTemplateRequest,
     },
-    ssh,
+    rest,
     state::AppState,
 };
 
@@ -116,9 +116,9 @@ pub async fn push(
         command = command.replace(&format!("{{{{{}}}}}", key), value);
     }
 
-    let (connect_timeout, read_timeout) = {
+    let rest_timeout = {
         let s = state.settings.read().await;
-        (s.ssh_connect_timeout_secs as u64, s.ssh_read_timeout_secs.max(60) as u64)
+        s.rest_timeout_secs.max(60) as u64
     };
 
     let concurrency = {
@@ -149,13 +149,12 @@ pub async fn push(
             }
         };
 
-        let creds = ssh::DeviceCreds {
+        let creds = rest::DeviceCreds {
             ip: device.ip_address.clone(),
-            port: device.ssh_port as u16,
-            username: device.ssh_username.clone(),
-            password: device.ssh_password.clone(),
-            connect_timeout_secs: connect_timeout,
-            read_timeout_secs: read_timeout,
+            port: device.rest_port as u16,
+            username: device.rest_username.clone(),
+            password: device.rest_password.clone(),
+            timeout_secs: rest_timeout,
         };
 
         let cmd = command.clone();
@@ -164,7 +163,7 @@ pub async fn push(
         let permit = sem.clone().acquire_owned().await.unwrap();
 
         handles.push(tokio::spawn(async move {
-            let result = match ssh::exec_command(creds, &cmd).await {
+            let result = match rest::exec_command(creds, &cmd).await {
                 Ok(output) => PushResult {
                     device_id: dev_id,
                     hostname,

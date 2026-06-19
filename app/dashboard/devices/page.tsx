@@ -110,9 +110,9 @@ type AddForm = {
   ip_address: string;
   location: string;
   role: ApiDevice["role"];
-  ssh_username: string;
-  ssh_password: string;
-  ssh_port: number;
+  rest_username: string;
+  rest_password: string;
+  rest_port: number;
 };
 
 type EditForm = {
@@ -120,9 +120,9 @@ type EditForm = {
   ip_address: string;
   location: string;
   role: ApiDevice["role"];
-  ssh_username: string;
-  ssh_password: string;
-  ssh_port: number;
+  rest_username: string;
+  rest_password: string;
+  rest_port: number;
 };
 
 const EMPTY_ADD: AddForm = {
@@ -130,9 +130,9 @@ const EMPTY_ADD: AddForm = {
   ip_address: "",
   location: "",
   role: "access",
-  ssh_username: "",
-  ssh_password: "",
-  ssh_port: 22,
+  rest_username: "",
+  rest_password: "",
+  rest_port: 8008,
 };
 
 export default function DevicesPage() {
@@ -184,8 +184,8 @@ export default function DevicesPage() {
     if (addForm.hostname.trim().length < 2) e.hostname = "Hostname required";
     if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(addForm.ip_address)) e.ip_address = "Invalid IP address";
     if (addForm.location.trim().length < 2) e.location = "Location required";
-    if (addForm.ssh_username.trim().length < 1) e.ssh_username = "SSH username required";
-    if (addForm.ssh_password.length < 1) e.ssh_password = "SSH password required";
+    if (addForm.rest_username.trim().length < 1) e.rest_username = "REST API username required";
+    if (addForm.rest_password.length < 1) e.rest_password = "REST API password required";
     setAddErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -241,9 +241,9 @@ export default function DevicesPage() {
       ip_address: d.ip_address,
       location: d.location,
       role: d.role,
-      ssh_username: "",
-      ssh_password: "",
-      ssh_port: d.ssh_port,
+      rest_username: "",
+      rest_password: "",
+      rest_port: d.rest_port,
     });
     setEditErrors({});
     setEditOpen(true);
@@ -259,10 +259,10 @@ export default function DevicesPage() {
         ip_address: editForm.ip_address,
         location: editForm.location,
         role: editForm.role,
-        ssh_port: editForm.ssh_port,
+        rest_port: editForm.rest_port,
       };
-      if (editForm.ssh_username) payload.ssh_username = editForm.ssh_username;
-      if (editForm.ssh_password) payload.ssh_password = editForm.ssh_password;
+      if (editForm.rest_username) payload.rest_username = editForm.rest_username;
+      if (editForm.rest_password) payload.rest_password = editForm.rest_password;
       await devicesApi.update(editTarget.id, payload);
       setEditOpen(false);
       toast({ title: "Device updated", message: `${editForm.hostname} updated.`, type: "info" });
@@ -654,17 +654,17 @@ export default function DevicesPage() {
 
             <div className="divider-label">
               <KeyRound size={12} />
-              SSH Credentials
+              REST API Credentials
             </div>
 
-            <Field label="SSH Username" error={addErrors.ssh_username}>
-              <input className="input" placeholder="admin" value={addForm.ssh_username} onChange={(e) => setAddForm((f) => ({ ...f, ssh_username: e.target.value }))} />
+            <Field label="REST API Username" error={addErrors.rest_username}>
+              <input className="input" placeholder="admin" value={addForm.rest_username} onChange={(e) => setAddForm((f) => ({ ...f, rest_username: e.target.value }))} />
             </Field>
-            <Field label="SSH Password" error={addErrors.ssh_password}>
-              <PasswordField value={addForm.ssh_password} onChange={(v) => setAddForm((f) => ({ ...f, ssh_password: v }))} />
+            <Field label="REST API Password" error={addErrors.rest_password}>
+              <PasswordField value={addForm.rest_password} onChange={(v) => setAddForm((f) => ({ ...f, rest_password: v }))} />
             </Field>
-            <Field label="SSH Port">
-              <input className="input" type="number" min={1} max={65535} value={addForm.ssh_port} onChange={(e) => setAddForm((f) => ({ ...f, ssh_port: parseInt(e.target.value) || 22 }))} />
+            <Field label="REST API Port" desc="Default: 8008">
+              <input className="input" type="number" min={1} max={65535} value={addForm.rest_port} onChange={(e) => setAddForm((f) => ({ ...f, rest_port: parseInt(e.target.value) || 8008 }))} />
             </Field>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 4 }}>
@@ -701,17 +701,17 @@ export default function DevicesPage() {
 
             <div className="divider-label">
               <KeyRound size={12} />
-              Update SSH Credentials (leave blank to keep existing)
+              Update REST API Credentials (leave blank to keep existing)
             </div>
 
-            <Field label="SSH Username">
-              <input className="input" placeholder="Leave blank to keep current" value={editForm.ssh_username} onChange={(e) => setEditForm((f) => ({ ...f, ssh_username: e.target.value }))} />
+            <Field label="REST API Username">
+              <input className="input" placeholder="Leave blank to keep current" value={editForm.rest_username} onChange={(e) => setEditForm((f) => ({ ...f, rest_username: e.target.value }))} />
             </Field>
-            <Field label="SSH Password">
-              <PasswordField value={editForm.ssh_password} onChange={(v) => setEditForm((f) => ({ ...f, ssh_password: v }))} placeholder="Leave blank to keep current" />
+            <Field label="REST API Password">
+              <PasswordField value={editForm.rest_password} onChange={(v) => setEditForm((f) => ({ ...f, rest_password: v }))} placeholder="Leave blank to keep current" />
             </Field>
-            <Field label="SSH Port">
-              <input className="input" type="number" min={1} max={65535} value={editForm.ssh_port} onChange={(e) => setEditForm((f) => ({ ...f, ssh_port: parseInt(e.target.value) || 22 }))} />
+            <Field label="REST API Port">
+              <input className="input" type="number" min={1} max={65535} value={editForm.rest_port} onChange={(e) => setEditForm((f) => ({ ...f, rest_port: parseInt(e.target.value) || 8008 }))} />
             </Field>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 4 }}>

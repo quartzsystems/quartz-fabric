@@ -49,6 +49,7 @@ import {
   type ApiMacEntry,
   type ApiTemp,
   type ApiVlan,
+  type ConfigOp,
 } from "@/lib/api";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/lib/toast";
@@ -81,7 +82,8 @@ const STATUS_META: Record<DeviceStatus, { badgeClass: string; icon: React.ReactN
 type StagedChange = {
   id: string;
   summary: string;
-  commands: string;
+  commands: string; // displayed in commit modal preview
+  ops: ConfigOp[];  // applied via YANG RESTCONF
 };
 
 const TABS = [
@@ -790,10 +792,46 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
     }
 
     if (summaryParts.length > 0) {
+      const ops: ConfigOp[] = [];
+
+      if (editIfaceDesc !== (editingIface.description ?? "")) {
+        ops.push({ type: "iface_description", iface: ifaceName, description: editIfaceDesc });
+      }
+      if (editIfaceShutdown !== initIfaceShutdown) {
+        ops.push({ type: "iface_shutdown", iface: ifaceName, shutdown: editIfaceShutdown });
+      }
+      if (switchportChanged) {
+        // Remove current VLAN assignments
+        const currentInfo = ifaceVlanMap.get(canonicalize(ifaceName));
+        if (currentInfo) {
+          if (currentInfo.mode === "trunk") {
+            for (const v of currentInfo.tagged)
+              ops.push({ type: "vlan_tagged_remove", vlan_id: v, iface: ifaceName });
+            if (currentInfo.native != null)
+              ops.push({ type: "vlan_untagged_remove", vlan_id: currentInfo.native, iface: ifaceName });
+          } else {
+            ops.push({ type: "vlan_untagged_remove", vlan_id: currentInfo.vlan, iface: ifaceName });
+          }
+        }
+        if (modeChanged) {
+          const portmodeVal = editIfaceSwitchportMode === "access" ? "access" : editIfaceSwitchportMode === "trunk" ? "hybrid" : "";
+          ops.push({ type: "iface_portmode", iface: ifaceName, mode: portmodeVal });
+        }
+        if (editIfaceSwitchportMode === "access" && editIfaceAccessVlan.trim()) {
+          ops.push({ type: "vlan_untagged_add", vlan_id: parseInt(editIfaceAccessVlan.trim()), iface: ifaceName });
+        } else if (editIfaceSwitchportMode === "trunk") {
+          for (const v of expandVlanList(editIfaceTaggedVlans))
+            ops.push({ type: "vlan_tagged_add", vlan_id: v, iface: ifaceName });
+          if (editIfaceNativeVlan.trim())
+            ops.push({ type: "vlan_untagged_add", vlan_id: parseInt(editIfaceNativeVlan.trim()), iface: ifaceName });
+        }
+      }
+
       const change: StagedChange = {
         id: `iface-${ifaceName}`,
         summary: `Interface ${ifaceName}: ${summaryParts.join(", ")}`,
         commands: [...removeLines, ...portLines, ...vlanLines].join("\n"),
+        ops,
       };
       setStagedChanges((prev) => [...prev.filter((c) => c.id !== change.id), change]);
       toast({ title: "Change staged", message: `${ifaceName} queued for commit.`, type: "info" });
@@ -835,7 +873,18 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
       summary = `VLAN ${oldId}: name → "${editVlanName}"`;
     }
 
-    const change: StagedChange = { id: `vlan-${oldId}`, summary, commands: commands.join("\n") };
+    const ops: ConfigOp[] = [];
+    if (idChanging) {
+      const parsePorts2 = (s: string | null) => (s ?? "").split(",").map((p) => p.trim()).filter(Boolean);
+      ops.push({ type: "vlan_create", vlan_id: newId, name: editVlanName || undefined });
+      for (const p of parsePorts2(editingVlan.tagged_ports))   ops.push({ type: "vlan_tagged_add",   vlan_id: newId, iface: p });
+      for (const p of parsePorts2(editingVlan.untagged_ports)) ops.push({ type: "vlan_untagged_add", vlan_id: newId, iface: p });
+      ops.push({ type: "vlan_delete", vlan_id: oldId });
+    } else if (editVlanName !== (editingVlan.name ?? "")) {
+      ops.push({ type: "vlan_description", vlan_id: oldId, description: editVlanName });
+    }
+
+    const change: StagedChange = { id: `vlan-${oldId}`, summary, commands: commands.join("\n"), ops };
     setStagedChanges((prev) => [...prev.filter((c) => c.id !== change.id), change]);
     setEditingVlan(null);
     toast({ title: "Change staged", message: `${summary} queued for commit.`, type: "info" });
@@ -849,6 +898,7 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
       id: `vlan-del-${vlan.vlan_id}`,
       summary,
       commands: ["configure terminal", `no vlan ${vlan.vlan_id}`, "end"].join("\n"),
+      ops: [{ type: "vlan_delete", vlan_id: vlan.vlan_id }],
     };
     setStagedChanges((prev) => [...prev.filter((c) => c.id !== change.id), change]);
     setEditingVlan(null);
@@ -863,6 +913,7 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
       id: `vlan-create-${id}`,
       summary,
       commands: ["configure terminal", `vlan ${id}`, ...(newVlanName ? [`name ${newVlanName}`] : []), "end"].join("\n"),
+      ops: [{ type: "vlan_create", vlan_id: id, name: newVlanName || undefined }],
     };
     setStagedChanges((prev) => [...prev.filter((c) => c.id !== change.id), change]);
     setCreatingVlan(false);
@@ -879,8 +930,9 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
       lines.push(`interface ${iface.name}`, shutdown ? "shutdown" : "no shutdown");
       lines.push(idx < ifaces.length - 1 ? "exit" : "end");
     });
+    const ops: ConfigOp[] = ifaces.map((iface) => ({ type: "iface_shutdown" as const, iface: iface.name, shutdown }));
     const summary = `${shutdown ? "Shutdown" : "Enable"} ${ifaces.length} interface${ifaces.length !== 1 ? "s" : ""}`;
-    setStagedChanges((prev) => [...prev, { id: `bulk-iface-${shutdown ? "down" : "up"}-${Date.now()}`, summary, commands: lines.join("\n") }]);
+    setStagedChanges((prev) => [...prev, { id: `bulk-iface-${shutdown ? "down" : "up"}-${Date.now()}`, summary, commands: lines.join("\n"), ops }]);
     setSelectedIfaceIds(new Set());
     toast({ title: "Change staged", message: `${summary} queued for commit.`, type: "info" });
   };
@@ -947,9 +999,38 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
     }
 
     if (lines.length === 0) return;
+
+    const bulkOps: ConfigOp[] = [];
+    for (const iface of ifaces) {
+      const ifaceName = iface.name;
+      const currentInfo = ifaceVlanMap.get(canonicalize(ifaceName));
+      const modeChanging = bulkSwitchportMode !== "";
+      if (bulkDesc.trim())              bulkOps.push({ type: "iface_description", iface: ifaceName, description: bulkDesc.trim() });
+      if (bulkShutdown === "shutdown")  bulkOps.push({ type: "iface_shutdown", iface: ifaceName, shutdown: true });
+      if (bulkShutdown === "enable")    bulkOps.push({ type: "iface_shutdown", iface: ifaceName, shutdown: false });
+      if (modeChanging) {
+        if (currentInfo) {
+          if (currentInfo.mode === "trunk") {
+            for (const v of currentInfo.tagged) bulkOps.push({ type: "vlan_tagged_remove", vlan_id: v, iface: ifaceName });
+            if (currentInfo.native != null)     bulkOps.push({ type: "vlan_untagged_remove", vlan_id: currentInfo.native, iface: ifaceName });
+          } else {
+            bulkOps.push({ type: "vlan_untagged_remove", vlan_id: currentInfo.vlan, iface: ifaceName });
+          }
+        }
+        const portmodeVal = bulkSwitchportMode === "access" ? "access" : "hybrid";
+        bulkOps.push({ type: "iface_portmode", iface: ifaceName, mode: portmodeVal });
+        if (bulkSwitchportMode === "access" && bulkAccessVlan.trim()) {
+          bulkOps.push({ type: "vlan_untagged_add", vlan_id: parseInt(bulkAccessVlan.trim()), iface: ifaceName });
+        } else if (bulkSwitchportMode === "trunk") {
+          for (const v of expandVlanList(bulkTaggedVlans)) bulkOps.push({ type: "vlan_tagged_add", vlan_id: v, iface: ifaceName });
+          if (bulkNativeVlan.trim()) bulkOps.push({ type: "vlan_untagged_add", vlan_id: parseInt(bulkNativeVlan.trim()), iface: ifaceName });
+        }
+      }
+    }
+
     const count = ifaces.length;
     const summary = `Bulk configure ${count} interface${count !== 1 ? "s" : ""}`;
-    setStagedChanges((prev) => [...prev, { id: `bulk-iface-config-${Date.now()}`, summary, commands: lines.join("\n") }]);
+    setStagedChanges((prev) => [...prev, { id: `bulk-iface-config-${Date.now()}`, summary, commands: lines.join("\n"), ops: bulkOps }]);
     setBulkConfigOpen(false);
     setSelectedIfaceIds(new Set());
     toast({ title: "Change staged", message: `${summary} queued for commit.`, type: "info" });
@@ -960,7 +1041,8 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
     if (toDelete.length === 0) return;
     const lines = ["configure terminal", ...toDelete.map((v) => `no vlan ${v.vlan_id}`), "end"];
     const summary = `Delete ${toDelete.length} VLAN${toDelete.length !== 1 ? "s" : ""} (${toDelete.map((v) => v.vlan_id).join(", ")})`;
-    setStagedChanges((prev) => [...prev, { id: `bulk-vlan-del-${Date.now()}`, summary, commands: lines.join("\n") }]);
+    const ops: ConfigOp[] = toDelete.map((v) => ({ type: "vlan_delete" as const, vlan_id: v.vlan_id }));
+    setStagedChanges((prev) => [...prev, { id: `bulk-vlan-del-${Date.now()}`, summary, commands: lines.join("\n"), ops }]);
     setSelectedVlanIds(new Set());
     toast({ title: "Change staged", message: `${summary} queued for commit.`, type: "info" });
   };
@@ -968,8 +1050,8 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
   const handleCommit = async () => {
     setCommitting(true);
     try {
-      const allCommands = stagedChanges.map((c) => c.commands).join("\n");
-      const res = await devicesApi.exec(id, allCommands);
+      const allOps = stagedChanges.flatMap((c) => c.ops);
+      const res = await devicesApi.configure(id, allOps);
       toast({ title: "Committed", message: `${stagedChanges.length} change(s) pushed to switch. Polling for updated data…`, type: "success" });
       setExecOutput(res.output);
       setStagedChanges([]);
@@ -1584,7 +1666,7 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
                 { label: "IP Address",   value: device.ip_address,                    mono: true  },
                 { label: "Role",         value: device.role,                          mono: false },
                 { label: "Location",     value: device.location,                      mono: false },
-                { label: "SSH Port",     value: String(device.ssh_port),              mono: true  },
+                { label: "REST API Port", value: String(device.rest_port),             mono: true  },
                 { label: "Added",        value: new Date(device.created_at).toLocaleDateString(), mono: false },
                 { label: "Last Updated", value: new Date(device.updated_at).toLocaleString(),     mono: false },
               ].map((r) => (

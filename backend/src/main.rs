@@ -9,7 +9,7 @@ mod db;
 mod error;
 mod models;
 mod polling;
-mod ssh;
+mod rest;
 mod state;
 
 use anyhow::{Context, Result};
