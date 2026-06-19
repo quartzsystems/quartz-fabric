@@ -12,6 +12,7 @@ use crate::state::AppState;
 
 mod auth;
 mod devices;
+mod logs;
 mod settings;
 mod templates;
 mod users;
@@ -48,6 +49,9 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/devices/{id}/configure", post(devices::configure))
         .route("/devices/{id}/yang-discover", get(devices::yang_discover))
         .route("/devices/{id}/yang-fetch", get(devices::yang_fetch))
+        // Logs
+        .route("/events", get(logs::events))
+        .route("/audit-log", get(logs::audit_log))
         // Config Templates
         .route("/templates", get(templates::list).post(templates::create))
         .route(

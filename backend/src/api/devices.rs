@@ -280,6 +280,11 @@ pub async fn configure(
     let output = rest::apply_config_ops(creds, &req.ops)
         .await
         .map_err(AppError::Internal)?;
+    let _ = db::insert_audit_log(
+        &state.db, &user.id, &user.username,
+        &device.id, &device.hostname,
+        "configure", Some(&output),
+    ).await;
     Ok(Json(ExecResponse { output }))
 }
 

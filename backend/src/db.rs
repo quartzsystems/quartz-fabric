@@ -91,7 +91,7 @@ pub async fn delete_template(db: &SqlitePool, id: &str) -> Result<bool> {
 pub async fn get_settings(db: &SqlitePool) -> Result<DbSettings> {
     let row = sqlx::query_as::<_, DbSettings>(
         "SELECT poll_interval_secs, poll_concurrency, rest_timeout_secs,
-                jwt_expiry_hours, updated_at
+                jwt_expiry_hours, display_timezone, updated_at
          FROM system_settings WHERE id = 1",
     )
     .fetch_optional(db)
@@ -101,6 +101,7 @@ pub async fn get_settings(db: &SqlitePool) -> Result<DbSettings> {
         poll_concurrency: 5,
         rest_timeout_secs: 30,
         jwt_expiry_hours: 8,
+        display_timezone: "UTC".to_string(),
         updated_at: Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
     }))
 }
@@ -142,6 +143,10 @@ pub async fn update_settings(db: &SqlitePool, req: &UpdateSettingsRequest) -> Re
     }
     if let Some(v) = req.jwt_expiry_hours {
         sqlx::query("UPDATE system_settings SET jwt_expiry_hours = ?, updated_at = ? WHERE id = 1")
+            .bind(v).bind(&now).execute(db).await?;
+    }
+    if let Some(v) = &req.display_timezone {
+        sqlx::query("UPDATE system_settings SET display_timezone = ?, updated_at = ? WHERE id = 1")
             .bind(v).bind(&now).execute(db).await?;
     }
     get_settings(db).await
@@ -740,6 +745,60 @@ pub async fn get_device_events(db: &SqlitePool, device_id: &str, limit: i64) -> 
 pub async fn get_recent_events(db: &SqlitePool, limit: i64) -> Result<Vec<DeviceEvent>> {
     let rows = sqlx::query_as::<_, DeviceEvent>(
         "SELECT * FROM device_events ORDER BY created_at DESC LIMIT ?",
+    )
+    .bind(limit)
+    .fetch_all(db)
+    .await?;
+    Ok(rows)
+}
+
+// ─── Global events & audit log ───────────────────────────────────────────────
+
+pub async fn get_global_events(db: &SqlitePool, limit: i64) -> Result<Vec<crate::models::GlobalEvent>> {
+    let rows = sqlx::query_as::<_, crate::models::GlobalEvent>(
+        "SELECT de.id, de.device_id,
+                COALESCE(d.hostname, 'Unknown') AS device_hostname,
+                de.severity, de.message, de.created_at
+         FROM device_events de
+         LEFT JOIN devices d ON de.device_id = d.id
+         ORDER BY de.created_at DESC LIMIT ?",
+    )
+    .bind(limit)
+    .fetch_all(db)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn insert_audit_log(
+    db: &SqlitePool,
+    user_id: &str,
+    username: &str,
+    device_id: &str,
+    device_hostname: &str,
+    action: &str,
+    details: Option<&str>,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO audit_log
+         (id, user_id, username, device_id, device_hostname, action, details, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(new_id())
+    .bind(user_id)
+    .bind(username)
+    .bind(device_id)
+    .bind(device_hostname)
+    .bind(action)
+    .bind(details)
+    .bind(now())
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+pub async fn get_audit_log(db: &SqlitePool, limit: i64) -> Result<Vec<crate::models::AuditLog>> {
+    let rows = sqlx::query_as::<_, crate::models::AuditLog>(
+        "SELECT * FROM audit_log ORDER BY created_at DESC LIMIT ?",
     )
     .bind(limit)
     .fetch_all(db)

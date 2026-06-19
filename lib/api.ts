@@ -362,6 +362,7 @@ export interface ApiSettings {
   poll_concurrency: number;
   rest_timeout_secs: number;
   jwt_expiry_hours: number;
+  display_timezone: string;
   listen_addr: string;
   cors_origin: string;
 }
@@ -371,10 +372,40 @@ export interface UpdateSettingsPayload {
   poll_concurrency?: number;
   rest_timeout_secs?: number;
   jwt_expiry_hours?: number;
+  display_timezone?: string;
+}
+
+// ─── Logs ─────────────────────────────────────────────────────────────────────
+
+export interface GlobalEvent {
+  id: string;
+  device_id: string;
+  device_hostname: string;
+  severity: "info" | "warning" | "error";
+  message: string;
+  created_at: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  user_id: string;
+  username: string;
+  device_id: string;
+  device_hostname: string;
+  action: string;
+  details: string | null;
+  created_at: string;
 }
 
 export const settings = {
   get: () => request<ApiSettings>("/settings"),
   update: (payload: UpdateSettingsPayload) =>
     request<ApiSettings>("/settings", { method: "PUT", body: JSON.stringify(payload) }),
+};
+
+export const logs = {
+  events: (limit?: number) =>
+    request<GlobalEvent[]>(`/events${limit ? `?limit=${limit}` : ""}`),
+  auditLog: (limit?: number) =>
+    request<AuditLogEntry[]>(`/audit-log${limit ? `?limit=${limit}` : ""}`),
 };

@@ -19,6 +19,7 @@ fn to_response(s: &crate::models::DbSettings, config: &crate::config::Config) ->
         poll_concurrency: s.poll_concurrency,
         rest_timeout_secs: s.rest_timeout_secs,
         jwt_expiry_hours: s.jwt_expiry_hours,
+        display_timezone: s.display_timezone.clone(),
         listen_addr: config.listen_addr.clone(),
         cors_origin: config.cors_origin.clone(),
         updated_at: s.updated_at.clone(),

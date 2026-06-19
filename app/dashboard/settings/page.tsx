@@ -10,6 +10,7 @@ import {
   Check,
   Clock,
   Database,
+  Globe,
   Network,
   Server,
   ShieldCheck,
@@ -64,7 +65,7 @@ function NumberField({
           min={min}
           max={max}
           step={step ?? 1}
-          style={suffix ? { paddingRight: suffix.length * 10 + 16 } : undefined}
+          style={{ textAlign: "left", paddingLeft: 12, ...(suffix ? { paddingRight: suffix.length * 10 + 16 } : {}) }}
         />
         {suffix && (
           <span
@@ -96,6 +97,7 @@ export default function SettingsPage() {
     poll_concurrency:   5,
     rest_timeout_secs:  30,
     jwt_expiry_hours:   8,
+    display_timezone:   "UTC",
   });
 
   useEffect(() => {
@@ -108,6 +110,7 @@ export default function SettingsPage() {
           poll_concurrency:   d.poll_concurrency,
           rest_timeout_secs:  d.rest_timeout_secs,
           jwt_expiry_hours:   d.jwt_expiry_hours,
+          display_timezone:   d.display_timezone || "UTC",
         });
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load settings"))
@@ -205,7 +208,7 @@ export default function SettingsPage() {
                     suffix="s"
                     min={30}
                     max={86400}
-                    step={60}
+                    step={30}
                     value={formValues.poll_interval_secs ?? 300}
                     onChange={set("poll_interval_secs")}
                   />
@@ -275,6 +278,66 @@ export default function SettingsPage() {
                 />
               ) : (
                 <ReadRow label="Session expiry" value={`${data?.jwt_expiry_hours ?? "—"} hours`} />
+              )}
+            </div>
+          </div>
+
+          {/* Timezone */}
+          <div className="card">
+            <div className="card-hdr">
+              <Globe size={15} style={{ color: "var(--qz-accent)" }} />
+              <span style={{ fontWeight: 600, fontSize: "var(--qz-fs-sm)" }}>Display Timezone</span>
+            </div>
+            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+              {loading ? (
+                <div className="skeleton" style={{ height: 56 }} />
+              ) : isAdmin ? (
+                <div>
+                  <label className="field-label">Timezone</label>
+                  <select
+                    className="input"
+                    value={formValues.display_timezone ?? "UTC"}
+                    onChange={(e) => setFormValues((f) => ({ ...f, display_timezone: e.target.value }))}
+                    style={{ width: "100%" }}
+                  >
+                    {[
+                      "UTC",
+                      "America/New_York",
+                      "America/Chicago",
+                      "America/Denver",
+                      "America/Los_Angeles",
+                      "America/Phoenix",
+                      "America/Anchorage",
+                      "Pacific/Honolulu",
+                      "America/Toronto",
+                      "America/Vancouver",
+                      "Europe/London",
+                      "Europe/Dublin",
+                      "Europe/Paris",
+                      "Europe/Berlin",
+                      "Europe/Amsterdam",
+                      "Europe/Stockholm",
+                      "Europe/Helsinki",
+                      "Europe/Moscow",
+                      "Asia/Dubai",
+                      "Asia/Kolkata",
+                      "Asia/Dhaka",
+                      "Asia/Bangkok",
+                      "Asia/Singapore",
+                      "Asia/Shanghai",
+                      "Asia/Tokyo",
+                      "Asia/Seoul",
+                      "Australia/Perth",
+                      "Australia/Sydney",
+                      "Pacific/Auckland",
+                    ].map((tz) => (
+                      <option key={tz} value={tz}>{tz.replace("_", " ")}</option>
+                    ))}
+                  </select>
+                  <div className="field-desc">All timestamps in Logs are displayed in this timezone.</div>
+                </div>
+              ) : (
+                <ReadRow label="Timezone" value={data?.display_timezone ?? "UTC"} />
               )}
             </div>
           </div>

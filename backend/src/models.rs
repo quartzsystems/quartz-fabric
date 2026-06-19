@@ -169,6 +169,7 @@ pub struct DbSettings {
     pub poll_concurrency: i64,
     pub rest_timeout_secs: i64,
     pub jwt_expiry_hours: i64,
+    pub display_timezone: String,
     pub updated_at: String,
 }
 
@@ -178,6 +179,7 @@ pub struct UpdateSettingsRequest {
     pub poll_concurrency: Option<i64>,
     pub rest_timeout_secs: Option<i64>,
     pub jwt_expiry_hours: Option<i64>,
+    pub display_timezone: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -186,6 +188,7 @@ pub struct SystemSettings {
     pub poll_concurrency: i64,
     pub rest_timeout_secs: i64,
     pub jwt_expiry_hours: i64,
+    pub display_timezone: String,
     pub listen_addr: String,
     pub cors_origin: String,
     pub updated_at: String,
@@ -326,6 +329,30 @@ pub struct EnvironmentResponse {
     pub psus: Vec<PsuEntry>,
     pub fans: Vec<FanEntry>,
     pub temps: Vec<TempEntry>,
+}
+
+// ─── Global events / Audit log ───────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct GlobalEvent {
+    pub id: String,
+    pub device_id: String,
+    pub device_hostname: String,
+    pub severity: String,
+    pub message: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct AuditLog {
+    pub id: String,
+    pub user_id: String,
+    pub username: String,
+    pub device_id: String,
+    pub device_hostname: String,
+    pub action: String,
+    pub details: Option<String>,
+    pub created_at: String,
 }
 
 // ─── Summary ─────────────────────────────────────────────────────────────────

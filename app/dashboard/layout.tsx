@@ -12,6 +12,7 @@ import {
   CircleHelp,
   ChevronUp,
   LayoutDashboard,
+  ScrollText,
   Server,
   Users,
   Settings,
@@ -84,6 +85,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     { label: "Dashboard",        href: "/dashboard",                  icon: <LayoutDashboard size={16} />, exact: true },
     { label: "Devices",          href: "/dashboard/devices",          icon: <Server size={16} /> },
     { label: "Config Templates", href: "/dashboard/config-templates", icon: <FileCode size={16} /> },
+    { label: "Logs",             href: "/dashboard/logs",             icon: <ScrollText size={16} /> },
   ];
 
   const secondaryNav = [
