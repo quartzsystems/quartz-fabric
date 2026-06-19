@@ -39,6 +39,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/devices/{id}/mac", get(devices::mac_table))
         .route("/devices/{id}/vlans", get(devices::vlans))
         .route("/devices/{id}/events", get(devices::events))
+        .route("/devices/{id}/environment", get(devices::environment))
         .route("/devices/{id}/exec", post(devices::exec))
         // Config Templates
         .route("/templates", get(templates::list).post(templates::create))

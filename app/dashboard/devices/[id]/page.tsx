@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -29,15 +30,20 @@ import {
   ArrowUpDown,
   ChevronDown,
   Plus,
+  Wind,
+  Zap,
+  Thermometer,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import {
   devices as devicesApi,
   type ApiArpEntry,
   type ApiDevice,
+  type ApiEnvironment,
   type ApiEvent,
   type ApiInterface,
   type ApiMacEntry,
+  type ApiTemp,
   type ApiVlan,
 } from "@/lib/api";
 import { Modal } from "@/components/ui/modal";
@@ -129,16 +135,31 @@ function VlanPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
+  const [dropPos, setDropPos] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (
+        triggerRef.current?.contains(e.target as Node) ||
+        dropRef.current?.contains(e.target as Node)
+      ) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
+
+  const openDropdown = () => {
+    if (disabled) return;
+    if (!open && triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect();
+      setDropPos({ top: r.bottom + 4, left: r.left, width: r.width, maxHeight: window.innerHeight - r.bottom - 20 });
+    }
+    setOpen((o) => !o);
+  };
 
   const selected = vlans.find((v) => String(v.vlan_id) === value);
   const filtered = vlans.filter((v) => {
@@ -153,11 +174,12 @@ function VlanPicker({
   };
 
   return (
-    <div ref={ref} style={{ position: "relative" }}>
+    <div>
       <button
+        ref={triggerRef}
         type="button"
         className="input"
-        onClick={() => !disabled && setOpen((o) => !o)}
+        onClick={openDropdown}
         disabled={disabled}
         style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%", cursor: "pointer", textAlign: "left" }}
       >
@@ -172,8 +194,8 @@ function VlanPicker({
         <ChevronDown size={13} style={{ color: "var(--qz-fg-4)", flexShrink: 0 }} />
       </button>
 
-      {open && (
-        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "var(--qz-surface-raised)", border: "1px solid var(--qz-border-strong)", borderRadius: "var(--qz-radius-lg)", boxShadow: "var(--qz-shadow-2)", zIndex: 50, overflow: "hidden" }}>
+      {open && dropPos && typeof document !== "undefined" && createPortal(
+        <div ref={dropRef} style={{ position: "fixed", top: dropPos.top, left: dropPos.left, width: dropPos.width, background: "var(--qz-surface-raised)", border: "1px solid var(--qz-border-strong)", borderRadius: "var(--qz-radius-lg)", boxShadow: "var(--qz-shadow-2)", zIndex: 9999, overflow: "hidden" }}>
           <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--qz-border)", display: "flex", alignItems: "center", gap: 6 }}>
             <Search size={12} style={{ color: "var(--qz-fg-4)" }} />
             <input
@@ -184,7 +206,7 @@ function VlanPicker({
               style={{ flex: 1, background: "transparent", border: "none", outline: "none", fontSize: 12, color: "var(--qz-fg-1)", fontFamily: "var(--qz-font-sans)" }}
             />
           </div>
-          <div style={{ maxHeight: 220, overflowY: "auto" }}>
+          <div style={{ maxHeight: Math.min(220, dropPos.maxHeight), overflowY: "auto" }}>
             {nullable && (
               <button type="button" onClick={() => pick(null)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "7px 12px", background: "transparent", border: "none", cursor: "pointer", fontSize: 13, color: "var(--qz-fg-3)", fontFamily: "var(--qz-font-sans)" }}>
                 None
@@ -204,7 +226,8 @@ function VlanPicker({
               );
             })}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -224,16 +247,31 @@ function VlanMultiPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
+  const [dropPos, setDropPos] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (
+        triggerRef.current?.contains(e.target as Node) ||
+        dropRef.current?.contains(e.target as Node)
+      ) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
+
+  const openDropdown = () => {
+    if (disabled) return;
+    if (!open && triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect();
+      setDropPos({ top: r.bottom + 4, left: r.left, width: r.width, maxHeight: window.innerHeight - r.bottom - 20 });
+    }
+    setOpen((o) => !o);
+  };
 
   const selectedIds = new Set(
     value.split(",").map((s) => s.trim()).filter(Boolean).map(Number).filter((n) => !isNaN(n) && n > 0)
@@ -256,11 +294,12 @@ function VlanMultiPicker({
     `${selectedIds.size} VLANs selected`;
 
   return (
-    <div ref={ref} style={{ position: "relative" }}>
+    <div>
       <button
+        ref={triggerRef}
         type="button"
         className="input"
-        onClick={() => !disabled && setOpen((o) => !o)}
+        onClick={openDropdown}
         disabled={disabled}
         style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%", cursor: "pointer", textAlign: "left" }}
       >
@@ -268,8 +307,8 @@ function VlanMultiPicker({
         <ChevronDown size={13} style={{ color: "var(--qz-fg-4)", flexShrink: 0 }} />
       </button>
 
-      {open && (
-        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "var(--qz-surface-raised)", border: "1px solid var(--qz-border-strong)", borderRadius: "var(--qz-radius-lg)", boxShadow: "var(--qz-shadow-2)", zIndex: 50, overflow: "hidden" }}>
+      {open && dropPos && typeof document !== "undefined" && createPortal(
+        <div ref={dropRef} style={{ position: "fixed", top: dropPos.top, left: dropPos.left, width: dropPos.width, background: "var(--qz-surface-raised)", border: "1px solid var(--qz-border-strong)", borderRadius: "var(--qz-radius-lg)", boxShadow: "var(--qz-shadow-2)", zIndex: 9999, overflow: "hidden" }}>
           <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--qz-border)", display: "flex", alignItems: "center", gap: 6 }}>
             <Search size={12} style={{ color: "var(--qz-fg-4)" }} />
             <input
@@ -289,7 +328,7 @@ function VlanMultiPicker({
               Clear
             </button>
           </div>
-          <div style={{ maxHeight: 240, overflowY: "auto" }}>
+          <div style={{ maxHeight: Math.min(300, dropPos.maxHeight), overflowY: "auto" }}>
             {filtered.length === 0 && <div style={{ padding: "10px 12px", fontSize: 12, color: "var(--qz-fg-4)" }}>No VLANs match</div>}
             {filtered.map((v) => {
               const checked = selectedIds.has(v.vlan_id);
@@ -304,7 +343,8 @@ function VlanMultiPicker({
               );
             })}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -428,6 +468,7 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
   const [arpEntries, setArpEntries] = useState<ApiArpEntry[] | null>(null);
   const [macEntries, setMacEntries] = useState<ApiMacEntry[] | null>(null);
   const [events, setEvents] = useState<ApiEvent[] | null>(null);
+  const [envData, setEnvData] = useState<ApiEnvironment | null>(null);
   const [tabLoading, setTabLoading] = useState(false);
 
   // Command executor
@@ -445,6 +486,23 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
   const [ifaceSortCol, setIfaceSortCol] = useState<"name" | "status" | "mode" | "speed" | "duplex" | "description">("name");
   const [ifaceSortDir, setIfaceSortDir] = useState<"asc" | "desc">("asc");
   const [colWidths, setColWidths] = useState<Partial<Record<string, number>>>({});
+
+  // Multi-selection
+  const [selectedIfaceIds, setSelectedIfaceIds] = useState<Set<string>>(new Set());
+  const [selectedVlanIds,  setSelectedVlanIds]  = useState<Set<string>>(new Set());
+
+  // Bulk interface configure modal
+  const [bulkConfigOpen,       setBulkConfigOpen]       = useState(false);
+  const [bulkDesc,             setBulkDesc]             = useState("");
+  const [bulkShutdown,         setBulkShutdown]         = useState<"" | "shutdown" | "enable">("");
+  const [bulkSwitchportMode,   setBulkSwitchportMode]   = useState<"" | "access" | "trunk">("");
+  const [bulkAccessVlan,       setBulkAccessVlan]       = useState("");
+  const [bulkNativeVlan,       setBulkNativeVlan]       = useState("");
+  const [bulkTaggedVlans,      setBulkTaggedVlans]      = useState("");
+
+  // Drag-select refs — no re-render needed, just coordinate state
+  const ifaceDragRef = useRef<{ startIdx: number; base: Set<string>; adding: boolean; moved: boolean } | null>(null);
+  const vlanDragRef  = useRef<{ startIdx: number; base: Set<string>; adding: boolean; moved: boolean } | null>(null);
 
   // Interface edit modal
   const [editingIface, setEditingIface] = useState<ApiInterface | null>(null);
@@ -525,6 +583,7 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
 
   useEffect(() => {
     devicesApi.events(id, 10).then(setEvents).catch(() => {});
+    devicesApi.environment(id).then(setEnvData).catch(() => {});
   }, [id]);
 
   const handleRefresh = async () => {
@@ -532,6 +591,15 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
     try {
       await devicesApi.refresh(id);
       toast({ title: "Poll queued", message: "Device will be polled shortly.", type: "info" });
+      // The backend poll is async — re-fetch displayed data once the poll likely completes.
+      // Two attempts at staggered intervals to handle fast and slow devices.
+      const refetchAll = () => {
+        loadDevice();
+        devicesApi.events(id, 10).then(setEvents).catch(() => {});
+        devicesApi.environment(id).then(setEnvData).catch(() => {});
+      };
+      setTimeout(refetchAll, 8_000);
+      setTimeout(refetchAll, 25_000);
     } catch (e) {
       toast({ title: "Error", message: e instanceof Error ? e.message : "Failed to queue poll", type: "error" });
     } finally {
@@ -796,6 +864,100 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
     setCreatingVlan(false);
     setNewVlanId("");
     setNewVlanName("");
+    toast({ title: "Change staged", message: `${summary} queued for commit.`, type: "info" });
+  };
+
+  const stageBulkIfaceShutdown = (ids: Set<string>, shutdown: boolean) => {
+    const ifaces = (sortedInterfaces ?? []).filter((i) => ids.has(i.id));
+    if (ifaces.length === 0) return;
+    const lines = ["configure terminal"];
+    ifaces.forEach((iface, idx) => {
+      lines.push(`interface ${iface.name}`, shutdown ? "shutdown" : "no shutdown");
+      lines.push(idx < ifaces.length - 1 ? "exit" : "end");
+    });
+    const summary = `${shutdown ? "Shutdown" : "Enable"} ${ifaces.length} interface${ifaces.length !== 1 ? "s" : ""}`;
+    setStagedChanges((prev) => [...prev, { id: `bulk-iface-${shutdown ? "down" : "up"}-${Date.now()}`, summary, commands: lines.join("\n") }]);
+    setSelectedIfaceIds(new Set());
+    toast({ title: "Change staged", message: `${summary} queued for commit.`, type: "info" });
+  };
+
+  const stageBulkIfaceConfigure = () => {
+    const ifaces = (sortedInterfaces ?? []).filter((i) => selectedIfaceIds.has(i.id));
+    if (ifaces.length === 0) return;
+    const lines: string[] = [];
+
+    for (const iface of ifaces) {
+      const ifaceName = iface.name;
+      const currentInfo = ifaceVlanMap.get(canonicalize(ifaceName));
+      const modeChanging = bulkSwitchportMode !== "";
+
+      // Remove from current VLANs when switching mode (Dell OS9 requires this first)
+      if (modeChanging && currentInfo) {
+        const toRemove: Array<{ vlan: number; type: "tagged" | "untagged" }> = [];
+        if (currentInfo.mode === "trunk") {
+          for (const v of currentInfo.tagged) toRemove.push({ vlan: v, type: "tagged" });
+          if (currentInfo.native != null) toRemove.push({ vlan: currentInfo.native, type: "untagged" });
+        } else {
+          toRemove.push({ vlan: currentInfo.vlan, type: "untagged" });
+        }
+        if (toRemove.length > 0) {
+          lines.push("configure terminal");
+          toRemove.forEach(({ vlan, type }, i) => {
+            lines.push(`interface vlan ${vlan}`, `no ${type} ${ifaceName}`);
+            if (i < toRemove.length - 1) lines.push("exit");
+          });
+          lines.push("end");
+        }
+      }
+
+      // Port-level commands
+      const portCmds: string[] = [`interface ${ifaceName}`];
+      if (bulkDesc.trim())            portCmds.push(`description ${bulkDesc.trim()}`);
+      if (bulkShutdown === "shutdown") portCmds.push("shutdown");
+      if (bulkShutdown === "enable")   portCmds.push("no shutdown");
+      if (modeChanging) {
+        if (bulkSwitchportMode === "access") portCmds.push("no portmode", "portmode access");
+        if (bulkSwitchportMode === "trunk")  portCmds.push("no portmode", "portmode hybrid");
+      }
+      if (portCmds.length > 1) lines.push("configure terminal", ...portCmds, "end");
+
+      // New VLAN assignments
+      if (modeChanging) {
+        if (bulkSwitchportMode === "access" && bulkAccessVlan.trim()) {
+          lines.push("configure terminal", `interface vlan ${bulkAccessVlan.trim()}`, `untagged ${ifaceName}`, "end");
+        } else if (bulkSwitchportMode === "trunk") {
+          const tagged = expandVlanList(bulkTaggedVlans);
+          const assignments: Array<{ vlan: number | string; type: "tagged" | "untagged" }> = [
+            ...tagged.map((v) => ({ vlan: v, type: "tagged" as const })),
+            ...(bulkNativeVlan.trim() ? [{ vlan: bulkNativeVlan.trim(), type: "untagged" as const }] : []),
+          ];
+          if (assignments.length > 0) {
+            lines.push("configure terminal");
+            assignments.forEach(({ vlan, type }, i) => {
+              lines.push(`interface vlan ${vlan}`, `${type} ${ifaceName}`);
+              lines.push(i < assignments.length - 1 ? "exit" : "end");
+            });
+          }
+        }
+      }
+    }
+
+    if (lines.length === 0) return;
+    const count = ifaces.length;
+    const summary = `Bulk configure ${count} interface${count !== 1 ? "s" : ""}`;
+    setStagedChanges((prev) => [...prev, { id: `bulk-iface-config-${Date.now()}`, summary, commands: lines.join("\n") }]);
+    setBulkConfigOpen(false);
+    setSelectedIfaceIds(new Set());
+    toast({ title: "Change staged", message: `${summary} queued for commit.`, type: "info" });
+  };
+
+  const stageBulkVlanDelete = (ids: Set<string>) => {
+    const toDelete = (vlans ?? []).filter((v) => ids.has(v.id));
+    if (toDelete.length === 0) return;
+    const lines = ["configure terminal", ...toDelete.map((v) => `no vlan ${v.vlan_id}`), "end"];
+    const summary = `Delete ${toDelete.length} VLAN${toDelete.length !== 1 ? "s" : ""} (${toDelete.map((v) => v.vlan_id).join(", ")})`;
+    setStagedChanges((prev) => [...prev, { id: `bulk-vlan-del-${Date.now()}`, summary, commands: lines.join("\n") }]);
+    setSelectedVlanIds(new Set());
     toast({ title: "Change staged", message: `${summary} queued for commit.`, type: "info" });
   };
 
@@ -1125,6 +1287,80 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
         </div>
       </Modal>
 
+      {/* Bulk interface configure modal */}
+      <Modal
+        opened={bulkConfigOpen}
+        onClose={() => setBulkConfigOpen(false)}
+        title={`Configure ${selectedIfaceIds.size} Interface${selectedIfaceIds.size !== 1 ? "s" : ""}`}
+        size="sm"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div className="alert alert-info" style={{ marginBottom: 2 }}>
+            <AlertCircle size={14} />
+            <span>Only fields you fill in will be applied. Leave a field blank to leave it unchanged.</span>
+          </div>
+
+          <Field label="Description" desc="Leave blank to keep existing">
+            <input
+              className="input"
+              placeholder="e.g. Server uplink"
+              value={bulkDesc}
+              onChange={(e) => setBulkDesc(e.target.value)}
+            />
+          </Field>
+
+          <Field label="Power State">
+            <select className="input" value={bulkShutdown} onChange={(e) => setBulkShutdown(e.target.value as "" | "shutdown" | "enable")}>
+              <option value="">No change</option>
+              <option value="enable">Enable (no shutdown)</option>
+              <option value="shutdown">Shutdown</option>
+            </select>
+          </Field>
+
+          <div className="divider-label">Switchport</div>
+
+          <Field label="Port Mode">
+            <select className="input" value={bulkSwitchportMode} onChange={(e) => setBulkSwitchportMode(e.target.value as "" | "access" | "trunk")}>
+              <option value="">No change</option>
+              <option value="access">Access</option>
+              <option value="trunk">Trunk</option>
+            </select>
+          </Field>
+
+          {bulkSwitchportMode === "access" && (
+            <Field label="Access VLAN" desc="VLAN to assign to all selected ports">
+              <VlanPicker vlans={vlans ?? []} value={bulkAccessVlan} onChange={setBulkAccessVlan} />
+            </Field>
+          )}
+
+          {bulkSwitchportMode === "trunk" && (
+            <>
+              <Field label="Allowed VLANs" desc="Tagged VLANs for all selected trunk ports">
+                <VlanMultiPicker vlans={vlans ?? []} value={bulkTaggedVlans} onChange={setBulkTaggedVlans} />
+              </Field>
+              <Field label="Native VLAN" desc="Untagged (native) VLAN — leave blank to skip">
+                <VlanPicker vlans={vlans ?? []} value={bulkNativeVlan} onChange={setBulkNativeVlan} nullable placeholder="None" />
+              </Field>
+            </>
+          )}
+
+          <div className="alert alert-info">
+            <GitCommitHorizontal size={14} />
+            <span>Changes will be staged — review and push to the switch from the commit bar.</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button className="btn btn-ghost" onClick={() => setBulkConfigOpen(false)}>Cancel</button>
+            <button
+              className="btn"
+              onClick={stageBulkIfaceConfigure}
+              disabled={!bulkDesc.trim() && !bulkShutdown && !bulkSwitchportMode}
+            >
+              <Check size={13} /> Stage Changes
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Commit modal */}
       <Modal opened={commitOpen} onClose={() => setCommitOpen(false)} title={`Staged Changes (${stagedChanges.length})`} size="lg">
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -1241,6 +1477,7 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
           }}
         >
           {[
+            { label: "Manufacturer",  value: device.manufacturer, mono: false },
             { label: "Model",         value: device.model,        mono: false },
             { label: "OS Version",    value: device.os_version,   mono: true  },
             { label: "Serial #",      value: device.serial_number,mono: true  },
@@ -1356,6 +1593,201 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
           </div>
 
           <div className="card">
+            <div className="card-hdr" style={{ justifyContent: "space-between" }}>
+              <span style={{ fontWeight: 600, fontSize: "var(--qz-fs-sm)" }}>Hardware Health</span>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => devicesApi.environment(id).then(setEnvData).catch(() => {})}
+              >
+                <RefreshCw size={12} />
+                Reload
+              </button>
+            </div>
+            <div style={{ padding: 16 }}>
+              {envData === null ? (
+                <div style={{ display: "flex", gap: 12 }}>
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="skeleton" style={{ height: 56, width: 120, borderRadius: "var(--qz-radius-md)" }} />
+                  ))}
+                </div>
+              ) : envData.psus.length === 0 && envData.fans.length === 0 && (envData.temps?.length ?? 0) === 0 ? (
+                <span style={{ fontSize: "var(--qz-fs-sm)", color: "var(--qz-fg-4)" }}>
+                  No environment data collected yet — poll the device to gather PSU and fan health.
+                </span>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+                  {/* Power Supplies */}
+                  {envData.psus.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-4)", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
+                        <Zap size={11} /> Power Supplies
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                        {envData.psus.map((psu) => {
+                          const isOk     = psu.present && psu.status === "OK";
+                          const isAbsent = !psu.present || psu.status === "Absent";
+                          const isFault  = !isAbsent && !isOk;
+                          const dotColor = isOk ? "var(--qz-accent)" : isFault ? "var(--qz-danger)" : "var(--qz-fg-4)";
+                          return (
+                            <div
+                              key={psu.id}
+                              style={{
+                                padding: "8px 12px",
+                                borderRadius: "var(--qz-radius-md)",
+                                background: isOk
+                                  ? "color-mix(in oklab, var(--qz-accent) 10%, var(--qz-surface))"
+                                  : isFault
+                                  ? "color-mix(in oklab, var(--qz-danger) 12%, var(--qz-surface))"
+                                  : "var(--qz-surface)",
+                                border: `1px solid ${isOk ? "color-mix(in oklab, var(--qz-accent) 30%, transparent)" : isFault ? "color-mix(in oklab, var(--qz-danger) 35%, transparent)" : "var(--qz-border)"}`,
+                                minWidth: 140,
+                              }}
+                            >
+                              {/* Slot + status */}
+                              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
+                                <div style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: dotColor }} />
+                                <div>
+                                  <div style={{ fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-3)", lineHeight: 1.2 }}>{psu.slot}</div>
+                                  <div style={{ fontSize: "var(--qz-fs-xs)", fontWeight: 600, color: dotColor }}>{psu.status}</div>
+                                </div>
+                              </div>
+                              {/* Power draw */}
+                              {(psu.power_watts != null || psu.avg_power_watts != null) && (
+                                <div style={{ fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-3)", display: "flex", flexDirection: "column", gap: 2, borderTop: "1px solid var(--qz-border)", paddingTop: 6 }}>
+                                  {psu.power_watts != null && (
+                                    <span><span style={{ color: "var(--qz-fg-4)" }}>Power </span><strong style={{ color: "var(--qz-fg-2)" }}>{psu.power_watts}W</strong></span>
+                                  )}
+                                  {psu.avg_power_watts != null && (
+                                    <span><span style={{ color: "var(--qz-fg-4)" }}>Avg </span><strong style={{ color: "var(--qz-fg-2)" }}>{psu.avg_power_watts}W</strong></span>
+                                  )}
+                                  {psu.fan_speed_rpm != null && psu.fan_speed_rpm > 0 && (
+                                    <span><span style={{ color: "var(--qz-fg-4)" }}>Fan </span><strong style={{ color: "var(--qz-fg-2)", fontFamily: "var(--qz-font-mono)" }}>{psu.fan_speed_rpm.toLocaleString()} RPM</strong></span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Fans */}
+                  {envData.fans.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-4)", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
+                        <Wind size={11} /> Fans
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                        {envData.fans.map((fan) => {
+                          const isOk     = fan.present && fan.status === "OK";
+                          const isAbsent = !fan.present || fan.status === "Absent";
+                          const isFault  = !isAbsent && !isOk;
+                          const dotColor = isOk ? "var(--qz-accent)" : isFault ? "var(--qz-danger)" : "var(--qz-fg-4)";
+                          const speeds   = fan.speed_rpm
+                            ? fan.speed_rpm.split(",").map(Number).filter((n) => !isNaN(n) && n > 0)
+                            : [];
+                          return (
+                            <div
+                              key={fan.id}
+                              style={{
+                                padding: "8px 12px",
+                                borderRadius: "var(--qz-radius-md)",
+                                background: isOk
+                                  ? "color-mix(in oklab, var(--qz-accent) 10%, var(--qz-surface))"
+                                  : isFault
+                                  ? "color-mix(in oklab, var(--qz-danger) 12%, var(--qz-surface))"
+                                  : "var(--qz-surface)",
+                                border: `1px solid ${isOk ? "color-mix(in oklab, var(--qz-accent) 30%, transparent)" : isFault ? "color-mix(in oklab, var(--qz-danger) 35%, transparent)" : "var(--qz-border)"}`,
+                                minWidth: 130,
+                              }}
+                            >
+                              {/* Slot + status */}
+                              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: speeds.length > 0 ? 6 : 0 }}>
+                                <div style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: dotColor }} />
+                                <div>
+                                  <div style={{ fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-3)", lineHeight: 1.2 }}>{fan.slot}</div>
+                                  <div style={{ fontSize: "var(--qz-fs-xs)", fontWeight: 600, color: dotColor }}>{fan.status}</div>
+                                </div>
+                              </div>
+                              {/* Fan speeds */}
+                              {speeds.length > 0 && (
+                                <div style={{ borderTop: "1px solid var(--qz-border)", paddingTop: 6, display: "flex", flexDirection: "column", gap: 1 }}>
+                                  {speeds.map((rpm, i) => (
+                                    <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: "var(--qz-fs-xs)" }}>
+                                      <span style={{ color: "var(--qz-fg-4)" }}>Fan {i + 1}</span>
+                                      <strong style={{ color: "var(--qz-fg-2)", fontFamily: "var(--qz-font-mono)" }}>{rpm.toLocaleString()} RPM</strong>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Temperatures */}
+                  {(envData.temps?.length ?? 0) > 0 && (() => {
+                    const SLOT_LABELS: Record<string, string> = {
+                      Bcm56960:   "BCM 56960",
+                      Bcm_Int:    "BCM Internal",
+                      CpuOnBoard: "CPU On-Board",
+                      Cpu_Int:    "CPU Internal",
+                      SysInt0:    "System Int 0",
+                      SysInt1:    "System Int 1",
+                    };
+                    const labelFor = (slot: string) =>
+                      SLOT_LABELS[slot] ??
+                      slot.replace(/_/g, " ").replace(/([a-z])([A-Z0-9])/g, "$1 $2");
+
+                    const temps = envData.temps ?? [];
+                    const tempColor = (c: number) =>
+                      c > 65 ? "var(--qz-danger)" : c > 50 ? "var(--qz-warn)" : "var(--qz-accent)";
+                    return (
+                      <div>
+                        <div style={{ fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-4)", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
+                          <Thermometer size={11} /> Temperatures
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                          {temps.map((t) => (
+                            <div
+                              key={t.id}
+                              style={{
+                                padding: "8px 12px",
+                                borderRadius: "var(--qz-radius-md)",
+                                background: "color-mix(in oklab, " + tempColor(t.temp_c) + " 10%, var(--qz-surface))",
+                                border: "1px solid color-mix(in oklab, " + tempColor(t.temp_c) + " 30%, transparent)",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 10,
+                                minWidth: 118,
+                              }}
+                            >
+                              <Thermometer size={14} style={{ color: tempColor(t.temp_c), flexShrink: 0 }} />
+                              <div>
+                                <div style={{ fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-4)", lineHeight: 1.3 }}>
+                                  {labelFor(t.slot)}
+                                </div>
+                                <div style={{ fontSize: "var(--qz-fs-sm)", fontWeight: 700, color: tempColor(t.temp_c), fontFamily: "var(--qz-font-mono)" }}>
+                                  {t.temp_c}°C
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                </div>
+              )}
+              </div>
+            </div>
+
+          <div className="card">
             <div className="card-hdr">
               <span style={{ fontWeight: 600, fontSize: "var(--qz-fs-sm)" }}>Recent Events</span>
             </div>
@@ -1390,16 +1822,42 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
       {activeTab === "interfaces" && (
         <div className="card">
           <div className="card-hdr" style={{ justifyContent: "space-between" }}>
-            <span style={{ fontSize: "var(--qz-fs-sm)", color: "var(--qz-fg-3)" }}>
-              {interfaces
-                ? sortedInterfaces!.length < interfaces.length
-                  ? `${sortedInterfaces!.length} of ${interfaces.length} interfaces`
-                  : `${interfaces.length} interfaces`
-                : "Loading..."}
-            </span>
-            <button className="btn btn-ghost btn-sm" onClick={() => { setInterfaces(null); setVlans(null); loadTabData("interfaces"); }}>
-              Reload
-            </button>
+            {selectedIfaceIds.size > 0 ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
+                <span style={{ fontSize: "var(--qz-fs-sm)", fontWeight: 600, color: "var(--qz-fg-1)" }}>
+                  {selectedIfaceIds.size} selected
+                </span>
+                <button className="btn btn-sm" onClick={() => {
+                  setBulkDesc(""); setBulkShutdown(""); setBulkSwitchportMode("");
+                  setBulkAccessVlan(""); setBulkNativeVlan(""); setBulkTaggedVlans("");
+                  setBulkConfigOpen(true);
+                }}>
+                  <Pencil size={12} /> Configure
+                </button>
+                <button className="btn btn-sm btn-ghost" onClick={() => stageBulkIfaceShutdown(selectedIfaceIds, true)}>
+                  Shutdown
+                </button>
+                <button className="btn btn-sm btn-ghost" onClick={() => stageBulkIfaceShutdown(selectedIfaceIds, false)}>
+                  Enable
+                </button>
+                <button className="btn btn-sm btn-ghost" style={{ marginLeft: "auto", color: "var(--qz-fg-4)" }} onClick={() => setSelectedIfaceIds(new Set())}>
+                  Clear
+                </button>
+              </div>
+            ) : (
+              <>
+                <span style={{ fontSize: "var(--qz-fs-sm)", color: "var(--qz-fg-3)" }}>
+                  {interfaces
+                    ? sortedInterfaces!.length < interfaces.length
+                      ? `${sortedInterfaces!.length} of ${interfaces.length} interfaces`
+                      : `${interfaces.length} interfaces`
+                    : "Loading..."}
+                </span>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setSelectedIfaceIds(new Set()); setInterfaces(null); setVlans(null); loadTabData("interfaces"); }}>
+                  Reload
+                </button>
+              </>
+            )}
           </div>
           <div style={{ padding: "8px 14px", borderBottom: "1px solid var(--qz-border)", display: "flex", gap: 10, alignItems: "center" }}>
             <div className="input-wrap" style={{ flex: 1 }}>
@@ -1421,6 +1879,25 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
             <table className="qz-table">
               <thead>
                 <tr>
+                  {canEdit && (() => {
+                    const all = (sortedInterfaces ?? []);
+                    const allSelected = all.length > 0 && all.every((i) => selectedIfaceIds.has(i.id));
+                    const someSelected = !allSelected && all.some((i) => selectedIfaceIds.has(i.id));
+                    return (
+                      <th style={{ width: 36, padding: "0 0 0 14px" }} onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          ref={(el) => { if (el) el.indeterminate = someSelected; }}
+                          checked={allSelected}
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedIfaceIds(new Set(all.map((i) => i.id)));
+                            else setSelectedIfaceIds(new Set());
+                          }}
+                          style={{ cursor: "pointer" }}
+                        />
+                      </th>
+                    );
+                  })()}
                   {(
                     [
                       { col: "name",        label: "Interface"   },
@@ -1477,16 +1954,56 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
               <tbody>
                 {tabLoading || !sortedInterfaces
                   ? Array.from({ length: 8 }).map((_, i) => (
-                      <tr key={i}><td colSpan={canEdit ? 7 : 6}><div className="skeleton" style={{ height: 20 }} /></td></tr>
+                      <tr key={i}><td colSpan={canEdit ? 8 : 6}><div className="skeleton" style={{ height: 20 }} /></td></tr>
                     ))
                   : sortedInterfaces.length === 0
-                  ? <tr><td colSpan={canEdit ? 7 : 6} style={{ textAlign: "center", padding: 32, color: "var(--qz-fg-4)" }}>
+                  ? <tr><td colSpan={canEdit ? 8 : 6} style={{ textAlign: "center", padding: 32, color: "var(--qz-fg-4)" }}>
                       {ifaceSearch ? "No interfaces match your search." : "No interface data. Trigger a poll."}
                     </td></tr>
-                  : sortedInterfaces.map((iface) => {
+                  : sortedInterfaces.map((iface, idx) => {
                       const swInfo = ifaceVlanMap.get(canonicalize(iface.name));
+                      const isSelected = selectedIfaceIds.has(iface.id);
                       return (
-                        <tr key={iface.id} style={canEdit ? { cursor: "pointer" } : undefined} onClick={canEdit ? () => openIfaceEdit(iface) : undefined}>
+                        <tr
+                          key={iface.id}
+                          style={canEdit ? { cursor: "pointer", userSelect: "none", background: isSelected ? "color-mix(in oklab, var(--qz-accent) 5%, transparent)" : undefined } : undefined}
+                          onMouseDown={canEdit ? (e) => {
+                            if (e.button !== 0) return;
+                            ifaceDragRef.current = { startIdx: idx, base: new Set(selectedIfaceIds), adding: !selectedIfaceIds.has(iface.id), moved: false };
+                          } : undefined}
+                          onMouseEnter={canEdit ? (e) => {
+                            if (!(e.buttons & 1) || !ifaceDragRef.current) return;
+                            const drag = ifaceDragRef.current;
+                            drag.moved = true;
+                            const [lo, hi] = [Math.min(drag.startIdx, idx), Math.max(drag.startIdx, idx)];
+                            const next = new Set(drag.base);
+                            sortedInterfaces.slice(lo, hi + 1).forEach((i) => drag.adding ? next.add(i.id) : next.delete(i.id));
+                            setSelectedIfaceIds(next);
+                          } : undefined}
+                          onClick={canEdit ? (e) => {
+                            if (ifaceDragRef.current?.moved) { ifaceDragRef.current = null; return; }
+                            ifaceDragRef.current = null;
+                            if (e.ctrlKey || e.metaKey) {
+                              setSelectedIfaceIds((prev) => { const n = new Set(prev); n.has(iface.id) ? n.delete(iface.id) : n.add(iface.id); return n; });
+                              return;
+                            }
+                            openIfaceEdit(iface);
+                          } : undefined}
+                        >
+                          {canEdit && (
+                            <td style={{ padding: "0 0 0 14px", width: 36 }} onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  const next = new Set(selectedIfaceIds);
+                                  if (e.target.checked) next.add(iface.id); else next.delete(iface.id);
+                                  setSelectedIfaceIds(next);
+                                }}
+                                style={{ cursor: "pointer" }}
+                              />
+                            </td>
+                          )}
                           <td><code style={{ whiteSpace: "nowrap" }}>{iface.name}</code></td>
                           <td>
                             <span className={`badge ${iface.status.toLowerCase() === "up" ? "badge-success" : iface.status.toLowerCase() === "down" ? "badge-danger" : "badge-neutral"}`}>
@@ -1535,24 +2052,59 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
       {activeTab === "vlans" && (
         <div className="card">
           <div className="card-hdr" style={{ justifyContent: "space-between" }}>
-            <span style={{ fontSize: "var(--qz-fs-sm)", color: "var(--qz-fg-3)" }}>
-              {vlans ? `${vlans.length} VLANs` : "Loading..."}
-            </span>
-            <div style={{ display: "flex", gap: 8 }}>
-              {canEdit && (
-                <button className="btn btn-sm" onClick={() => { setNewVlanId(""); setNewVlanName(""); setCreatingVlan(true); }}>
-                  <Plus size={13} /> New VLAN
+            {selectedVlanIds.size > 0 ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
+                <span style={{ fontSize: "var(--qz-fs-sm)", fontWeight: 600, color: "var(--qz-fg-1)" }}>
+                  {selectedVlanIds.size} selected
+                </span>
+                <button className="btn btn-sm btn-danger" onClick={() => stageBulkVlanDelete(selectedVlanIds)}>
+                  <Trash2 size={12} /> Delete
                 </button>
-              )}
-              <button className="btn btn-ghost btn-sm" onClick={() => { setVlans(null); loadTabData("vlans"); }}>
-                Reload
-              </button>
-            </div>
+                <button className="btn btn-sm btn-ghost" style={{ marginLeft: "auto", color: "var(--qz-fg-4)" }} onClick={() => setSelectedVlanIds(new Set())}>
+                  Clear
+                </button>
+              </div>
+            ) : (
+              <>
+                <span style={{ fontSize: "var(--qz-fs-sm)", color: "var(--qz-fg-3)" }}>
+                  {vlans ? `${vlans.length} VLANs` : "Loading..."}
+                </span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {canEdit && (
+                    <button className="btn btn-sm" onClick={() => { setNewVlanId(""); setNewVlanName(""); setCreatingVlan(true); }}>
+                      <Plus size={13} /> New VLAN
+                    </button>
+                  )}
+                  <button className="btn btn-ghost btn-sm" onClick={() => { setSelectedVlanIds(new Set()); setVlans(null); loadTabData("vlans"); }}>
+                    Reload
+                  </button>
+                </div>
+              </>
+            )}
           </div>
           <div className="scroll-x">
             <table className="qz-table">
               <thead>
                 <tr>
+                  {canEdit && (() => {
+                    const all = vlans ?? [];
+                    const allSelected = all.length > 0 && all.every((v) => selectedVlanIds.has(v.id));
+                    const someSelected = !allSelected && all.some((v) => selectedVlanIds.has(v.id));
+                    return (
+                      <th style={{ width: 36, padding: "0 0 0 14px" }} onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          ref={(el) => { if (el) el.indeterminate = someSelected; }}
+                          checked={allSelected}
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedVlanIds(new Set(all.map((v) => v.id)));
+                            else setSelectedVlanIds(new Set());
+                          }}
+                          style={{ cursor: "pointer" }}
+                        />
+                      </th>
+                    );
+                  })()}
                   <th>VLAN ID</th>
                   <th>Name</th>
                   <th>Status</th>
@@ -1564,30 +2116,72 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
               <tbody>
                 {tabLoading || !vlans
                   ? Array.from({ length: 5 }).map((_, i) => (
-                      <tr key={i}><td colSpan={canEdit ? 6 : 5}><div className="skeleton" style={{ height: 20 }} /></td></tr>
+                      <tr key={i}><td colSpan={canEdit ? 7 : 5}><div className="skeleton" style={{ height: 20 }} /></td></tr>
                     ))
                   : vlans.length === 0
-                  ? <tr><td colSpan={canEdit ? 6 : 5} style={{ textAlign: "center", padding: 32, color: "var(--qz-fg-4)" }}>No VLAN data. Trigger a poll.</td></tr>
-                  : vlans.map((vlan) => (
-                      <tr key={vlan.id} style={canEdit ? { cursor: "pointer" } : undefined} onClick={canEdit ? () => openVlanEdit(vlan) : undefined}>
-                        <td>
-                          <span className="badge badge-accent">{vlan.vlan_id}</span>
-                        </td>
-                        <td style={{ fontSize: "var(--qz-fs-sm)", fontWeight: 500 }}>{vlan.name ?? ""}</td>
-                        <td>
-                          <span className={`badge ${vlan.status === "active" ? "badge-success" : "badge-neutral"}`}>{vlan.status}</span>
-                        </td>
-                        <td><span style={{ fontFamily: "var(--qz-font-mono)", fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-3)" }}>{compressPorts(vlan.tagged_ports)}</span></td>
-                        <td><span style={{ fontFamily: "var(--qz-font-mono)", fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-3)" }}>{compressPorts(vlan.untagged_ports)}</span></td>
-                        {canEdit && (
+                  ? <tr><td colSpan={canEdit ? 7 : 5} style={{ textAlign: "center", padding: 32, color: "var(--qz-fg-4)" }}>No VLAN data. Trigger a poll.</td></tr>
+                  : vlans.map((vlan, idx) => {
+                      const isSelected = selectedVlanIds.has(vlan.id);
+                      return (
+                        <tr
+                          key={vlan.id}
+                          style={{ cursor: canEdit ? "pointer" : undefined, userSelect: "none", background: isSelected ? "color-mix(in oklab, var(--qz-accent) 5%, transparent)" : undefined }}
+                          onMouseDown={canEdit ? (e) => {
+                            if (e.button !== 0) return;
+                            vlanDragRef.current = { startIdx: idx, base: new Set(selectedVlanIds), adding: !selectedVlanIds.has(vlan.id), moved: false };
+                          } : undefined}
+                          onMouseEnter={canEdit ? (e) => {
+                            if (!(e.buttons & 1) || !vlanDragRef.current) return;
+                            const drag = vlanDragRef.current;
+                            drag.moved = true;
+                            const [lo, hi] = [Math.min(drag.startIdx, idx), Math.max(drag.startIdx, idx)];
+                            const next = new Set(drag.base);
+                            vlans.slice(lo, hi + 1).forEach((v) => drag.adding ? next.add(v.id) : next.delete(v.id));
+                            setSelectedVlanIds(next);
+                          } : undefined}
+                          onClick={canEdit ? (e) => {
+                            if (vlanDragRef.current?.moved) { vlanDragRef.current = null; return; }
+                            vlanDragRef.current = null;
+                            if (e.ctrlKey || e.metaKey) {
+                              setSelectedVlanIds((prev) => { const n = new Set(prev); n.has(vlan.id) ? n.delete(vlan.id) : n.add(vlan.id); return n; });
+                              return;
+                            }
+                            openVlanEdit(vlan);
+                          } : undefined}
+                        >
+                          {canEdit && (
+                            <td style={{ padding: "0 0 0 14px", width: 36 }} onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  const next = new Set(selectedVlanIds);
+                                  if (e.target.checked) next.add(vlan.id); else next.delete(vlan.id);
+                                  setSelectedVlanIds(next);
+                                }}
+                                style={{ cursor: "pointer" }}
+                              />
+                            </td>
+                          )}
                           <td>
-                            <button className="btn-icon-sm" style={{ background: "rgba(79,179,255,0.12)", color: "var(--qz-info)", border: "1px solid rgba(79,179,255,0.3)" }} onClick={(e) => { e.stopPropagation(); openVlanEdit(vlan); }}>
-                              <Pencil size={11} />
-                            </button>
+                            <span className="badge badge-accent">{vlan.vlan_id}</span>
                           </td>
-                        )}
-                      </tr>
-                    ))
+                          <td style={{ fontSize: "var(--qz-fs-sm)", fontWeight: 500 }}>{vlan.name ?? ""}</td>
+                          <td>
+                            <span className={`badge ${vlan.status === "active" ? "badge-success" : "badge-neutral"}`}>{vlan.status}</span>
+                          </td>
+                          <td><span style={{ fontFamily: "var(--qz-font-mono)", fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-3)" }}>{compressPorts(vlan.tagged_ports)}</span></td>
+                          <td><span style={{ fontFamily: "var(--qz-font-mono)", fontSize: "var(--qz-fs-xs)", color: "var(--qz-fg-3)" }}>{compressPorts(vlan.untagged_ports)}</span></td>
+                          {canEdit && (
+                            <td>
+                              <button className="btn-icon-sm" style={{ background: "rgba(79,179,255,0.12)", color: "var(--qz-info)", border: "1px solid rgba(79,179,255,0.3)" }} onClick={(e) => { e.stopPropagation(); openVlanEdit(vlan); }}>
+                                <Pencil size={11} />
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })
                 }
               </tbody>
             </table>

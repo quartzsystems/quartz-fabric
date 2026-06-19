@@ -80,10 +80,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     { label: "Dashboard",        href: "/dashboard",                  icon: <LayoutDashboard size={16} />, exact: true },
     { label: "Devices",          href: "/dashboard/devices",          icon: <Server size={16} /> },
     { label: "Config Templates", href: "/dashboard/config-templates", icon: <FileCode size={16} /> },
-    ...(user.role === "admin" ? [{ label: "Users", href: "/dashboard/users", icon: <Users size={16} /> }] : []),
   ];
 
   const secondaryNav = [
+    ...(user.role === "admin" ? [{ label: "Users", href: "/dashboard/users", icon: <Users size={16} /> }] : []),
     { label: "Settings", href: "/dashboard/settings", icon: <Settings size={16} /> },
   ];
 

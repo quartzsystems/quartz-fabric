@@ -285,6 +285,35 @@ html, body {
 .input:focus { border-color: var(--qz-accent); box-shadow: var(--qz-focus-ring); }
 .input:disabled { opacity: 0.5; cursor: not-allowed; }
 
+input[type="checkbox"] {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 14px !important;
+  height: 14px !important;
+  flex-shrink: 0;
+  border: 1.5px solid #41454f !important;
+  border-radius: 3px !important;
+  background-color: #1a1d26 !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  background-size: 10px 10px !important;
+  cursor: pointer;
+  vertical-align: middle;
+  transition: background-color 80ms, border-color 80ms;
+}
+input[type="checkbox"]:hover:not(:disabled) { border-color: #6b6f7a !important; }
+input[type="checkbox"]:checked {
+  background-color: #00d992 !important;
+  border-color: #00d992 !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 5L4 7.5L8.5 2.5' stroke='%230b0d12' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E") !important;
+}
+input[type="checkbox"]:indeterminate {
+  background-color: #00d992 !important;
+  border-color: #00d992 !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cline x1='2' y1='5' x2='8' y2='5' stroke='%230b0d12' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") !important;
+}
+input[type="checkbox"]:disabled { opacity: 0.4 !important; cursor: not-allowed; }
+
 select.input {
   cursor: pointer;
   appearance: none;

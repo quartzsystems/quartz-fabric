@@ -113,6 +113,7 @@ export interface ApiDevice {
   uptime: string | null;
   cpu_pct: number | null;
   mem_pct: number | null;
+  manufacturer: string | null;
   last_seen: string | null;
   ssh_port: number;
   created_at: string;
@@ -189,6 +190,42 @@ export interface ApiVlan {
   updated_at: string;
 }
 
+export interface ApiPsu {
+  id: string;
+  device_id: string;
+  slot: string;
+  status: string;
+  present: boolean;
+  power_watts: number | null;
+  avg_power_watts: number | null;
+  fan_speed_rpm: number | null;
+  updated_at: string;
+}
+
+export interface ApiFan {
+  id: string;
+  device_id: string;
+  slot: string;
+  status: string;
+  present: boolean;
+  speed_rpm: string | null;
+  updated_at: string;
+}
+
+export interface ApiTemp {
+  id: string;
+  device_id: string;
+  slot: string;
+  temp_c: number;
+  updated_at: string;
+}
+
+export interface ApiEnvironment {
+  psus: ApiPsu[];
+  fans: ApiFan[];
+  temps: ApiTemp[];
+}
+
 export const devices = {
   list: () => request<ApiDevice[]>("/devices"),
   get: (id: string) => request<ApiDevice>(`/devices/${id}`),
@@ -211,6 +248,7 @@ export const devices = {
       method: "POST",
       body: JSON.stringify({ command }),
     }),
+  environment: (id: string) => request<ApiEnvironment>(`/devices/${id}/environment`),
 };
 
 // ─── Summary ──────────────────────────────────────────────────────────────────

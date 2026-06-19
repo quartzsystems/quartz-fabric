@@ -52,6 +52,7 @@ pub struct Device {
     pub uptime: Option<String>,
     pub cpu_pct: Option<i64>,
     pub mem_pct: Option<i64>,
+    pub manufacturer: Option<String>,
     pub last_seen: Option<String>,
     #[serde(skip_serializing)]
     pub ssh_username: String,
@@ -260,6 +261,48 @@ pub struct ExecRequest {
 #[derive(Debug, Serialize)]
 pub struct ExecResponse {
     pub output: String,
+}
+
+// ─── Environment (PSU / Fan / Temp) ──────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct PsuEntry {
+    pub id: String,
+    pub device_id: String,
+    pub slot: String,
+    pub status: String,
+    pub present: bool,
+    pub power_watts: Option<i64>,
+    pub avg_power_watts: Option<i64>,
+    pub fan_speed_rpm: Option<i64>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct FanEntry {
+    pub id: String,
+    pub device_id: String,
+    pub slot: String,
+    pub status: String,
+    pub present: bool,
+    pub speed_rpm: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct TempEntry {
+    pub id: String,
+    pub device_id: String,
+    pub slot: String,
+    pub temp_c: i64,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EnvironmentResponse {
+    pub psus: Vec<PsuEntry>,
+    pub fans: Vec<FanEntry>,
+    pub temps: Vec<TempEntry>,
 }
 
 // ─── Summary ─────────────────────────────────────────────────────────────────

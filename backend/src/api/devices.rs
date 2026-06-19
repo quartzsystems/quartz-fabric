@@ -12,8 +12,8 @@ use crate::{
     db,
     error::AppError,
     models::{
-        ArpEntry, CreateDeviceRequest, Device, DeviceEvent, DeviceInterface, ExecRequest,
-        ExecResponse, MacEntry, Summary, UpdateDeviceRequest, VlanEntry,
+        ArpEntry, CreateDeviceRequest, Device, DeviceEvent, DeviceInterface, EnvironmentResponse,
+        ExecRequest, ExecResponse, MacEntry, Summary, UpdateDeviceRequest, VlanEntry,
     },
     polling, ssh,
     state::AppState,
@@ -224,6 +224,18 @@ pub async fn exec(
         .map_err(|e| AppError::Internal(e))?;
 
     Ok(Json(ExecResponse { output }))
+}
+
+pub async fn environment(
+    AuthUser(_): AuthUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<EnvironmentResponse>, AppError> {
+    ensure_device_exists(&state, &id).await?;
+    let (psus, fans, temps) = db::get_device_environment(&state.db, &id)
+        .await
+        .map_err(AppError::Internal)?;
+    Ok(Json(EnvironmentResponse { psus, fans, temps }))
 }
 
 // ─── Summary ──────────────────────────────────────────────────────────────────

@@ -4,7 +4,7 @@ use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::models::*;
-use crate::ssh::PollResult;
+use crate::ssh::{FanInfo, PollResult, PsuInfo, TempInfo};
 
 // ─── Config Templates ────────────────────────────────────────────────────────
 
@@ -399,7 +399,9 @@ pub async fn apply_poll_result(db: &SqlitePool, device_id: &str, result: &PollRe
             status = ?, os_version = COALESCE(?, os_version), model = COALESCE(?, model),
             serial_number = COALESCE(?, serial_number), uptime = ?,
             port_count = COALESCE(?, port_count),
-            cpu_pct = ?, mem_pct = ?, last_seen = ?, updated_at = ?
+            cpu_pct = ?, mem_pct = ?,
+            manufacturer = COALESCE(?, manufacturer),
+            last_seen = ?, updated_at = ?
          WHERE id = ?",
     )
     .bind("online")
@@ -410,6 +412,7 @@ pub async fn apply_poll_result(db: &SqlitePool, device_id: &str, result: &PollRe
     .bind(port_count_val)
     .bind(result.cpu_pct.map(|v| v as i64))
     .bind(result.mem_pct.map(|v| v as i64))
+    .bind(&result.manufacturer)
     .bind(&now)
     .bind(&now)
     .bind(device_id)
@@ -504,7 +507,169 @@ pub async fn apply_poll_result(db: &SqlitePool, device_id: &str, result: &PollRe
         }
     }
 
+    // Environment data (only update if we got results)
+    if !result.psus.is_empty() || !result.fans.is_empty() || !result.temps.is_empty() {
+        apply_poll_environment(db, device_id, &result.psus, &result.fans, &result.temps).await?;
+    }
+
     Ok(())
+}
+
+pub async fn apply_poll_environment(
+    db: &SqlitePool,
+    device_id: &str,
+    psus: &[PsuInfo],
+    fans: &[FanInfo],
+    temps: &[TempInfo],
+) -> Result<()> {
+    let now = now();
+
+    let existing_psus: Vec<PsuEntry> =
+        sqlx::query_as("SELECT * FROM device_psus WHERE device_id = ?")
+            .bind(device_id)
+            .fetch_all(db)
+            .await?;
+
+    for psu in psus {
+        let prev    = existing_psus.iter().find(|p| p.slot == psu.slot);
+        let prev_ok = prev.map(|p| p.status == "OK" && p.present).unwrap_or(false);
+        let cur_ok  = psu.status == "OK" && psu.present;
+
+        sqlx::query(
+            "INSERT INTO device_psus
+                 (id, device_id, slot, status, present, power_watts, avg_power_watts, fan_speed_rpm, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(device_id, slot) DO UPDATE SET
+                 status          = excluded.status,
+                 present         = excluded.present,
+                 power_watts     = excluded.power_watts,
+                 avg_power_watts = excluded.avg_power_watts,
+                 fan_speed_rpm   = excluded.fan_speed_rpm,
+                 updated_at      = excluded.updated_at",
+        )
+        .bind(new_id())
+        .bind(device_id)
+        .bind(&psu.slot)
+        .bind(&psu.status)
+        .bind(psu.present as i64)
+        .bind(psu.power_watts.map(|v| v as i64))
+        .bind(psu.avg_power_watts.map(|v| v as i64))
+        .bind(psu.fan_speed_rpm.map(|v| v as i64))
+        .bind(&now)
+        .execute(db)
+        .await?;
+
+        let first_seen = prev.is_none();
+        let changed    = prev.map(|p| p.status != psu.status || p.present != psu.present).unwrap_or(false);
+
+        if first_seen || changed {
+            if !psu.present || psu.status == "Absent" {
+                add_device_event(db, device_id, "warning",
+                    &format!("Power supply {} is absent", psu.slot)).await?;
+            } else if psu.status == "Fault" {
+                add_device_event(db, device_id, "error",
+                    &format!("Power supply {} fault detected", psu.slot)).await?;
+            } else if !first_seen && cur_ok && !prev_ok {
+                add_device_event(db, device_id, "info",
+                    &format!("Power supply {} recovered", psu.slot)).await?;
+            }
+        }
+    }
+
+    let existing_fans: Vec<FanEntry> =
+        sqlx::query_as("SELECT * FROM device_fans WHERE device_id = ?")
+            .bind(device_id)
+            .fetch_all(db)
+            .await?;
+
+    for fan in fans {
+        let prev    = existing_fans.iter().find(|f| f.slot == fan.slot);
+        let prev_ok = prev.map(|f| f.status == "OK" && f.present).unwrap_or(false);
+        let cur_ok  = fan.status == "OK" && fan.present;
+
+        sqlx::query(
+            "INSERT INTO device_fans
+                 (id, device_id, slot, status, present, speed_rpm, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(device_id, slot) DO UPDATE SET
+                 status     = excluded.status,
+                 present    = excluded.present,
+                 speed_rpm  = excluded.speed_rpm,
+                 updated_at = excluded.updated_at",
+        )
+        .bind(new_id())
+        .bind(device_id)
+        .bind(&fan.slot)
+        .bind(&fan.status)
+        .bind(fan.present as i64)
+        .bind(&fan.speed_rpm)
+        .bind(&now)
+        .execute(db)
+        .await?;
+
+        let first_seen = prev.is_none();
+        let changed    = prev.map(|f| f.status != fan.status || f.present != fan.present).unwrap_or(false);
+
+        if first_seen || changed {
+            if !fan.present {
+                add_device_event(db, device_id, "warning",
+                    &format!("Fan {} is absent", fan.slot)).await?;
+            } else if fan.status == "Fault" {
+                add_device_event(db, device_id, "error",
+                    &format!("Fan {} fault detected", fan.slot)).await?;
+            } else if !first_seen && cur_ok && !prev_ok {
+                add_device_event(db, device_id, "info",
+                    &format!("Fan {} recovered", fan.slot)).await?;
+            }
+        }
+    }
+
+    for temp in temps {
+        sqlx::query(
+            "INSERT INTO device_temps (id, device_id, slot, temp_c, updated_at)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(device_id, slot) DO UPDATE SET
+                 temp_c     = excluded.temp_c,
+                 updated_at = excluded.updated_at",
+        )
+        .bind(new_id())
+        .bind(device_id)
+        .bind(&temp.slot)
+        .bind(temp.temp_c as i64)
+        .bind(&now)
+        .execute(db)
+        .await?;
+    }
+
+    Ok(())
+}
+
+pub async fn get_device_environment(
+    db: &SqlitePool,
+    device_id: &str,
+) -> Result<(Vec<PsuEntry>, Vec<FanEntry>, Vec<TempEntry>)> {
+    let psus = sqlx::query_as::<_, PsuEntry>(
+        "SELECT * FROM device_psus WHERE device_id = ? ORDER BY slot ASC",
+    )
+    .bind(device_id)
+    .fetch_all(db)
+    .await?;
+
+    let fans = sqlx::query_as::<_, FanEntry>(
+        "SELECT * FROM device_fans WHERE device_id = ? ORDER BY slot ASC",
+    )
+    .bind(device_id)
+    .fetch_all(db)
+    .await?;
+
+    let temps = sqlx::query_as::<_, TempEntry>(
+        "SELECT * FROM device_temps WHERE device_id = ? ORDER BY slot ASC",
+    )
+    .bind(device_id)
+    .fetch_all(db)
+    .await?;
+
+    Ok((psus, fans, temps))
 }
 
 pub async fn mark_device_offline(db: &SqlitePool, device_id: &str, reason: &str) -> Result<()> {
