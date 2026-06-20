@@ -403,6 +403,20 @@ export const settings = {
     request<ApiSettings>("/settings", { method: "PUT", body: JSON.stringify(payload) }),
 };
 
+// ─── Search ───────────────────────────────────────────────────────────────────
+
+export interface SearchResult {
+  kind: "device" | "interface" | "vlan";
+  device_id: string;
+  device_hostname: string;
+  label: string;
+  sublabel: string | null;
+}
+
+export const search = {
+  query: (q: string) => request<SearchResult[]>(`/search?q=${encodeURIComponent(q)}`),
+};
+
 export const logs = {
   events: (limit?: number) =>
     request<GlobalEvent[]>(`/events${limit ? `?limit=${limit}` : ""}`),

@@ -331,6 +331,17 @@ pub struct EnvironmentResponse {
     pub temps: Vec<TempEntry>,
 }
 
+// ─── Search ──────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct SearchResult {
+    pub kind: String,
+    pub device_id: String,
+    pub device_hostname: String,
+    pub label: String,
+    pub sublabel: Option<String>,
+}
+
 // ─── Global events / Audit log ───────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

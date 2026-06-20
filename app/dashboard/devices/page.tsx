@@ -87,7 +87,7 @@ function PasswordField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        style={{ paddingRight: 36 }}
+        style={{ paddingLeft: 12, paddingRight: 36 }}
       />
       <span className="input-suffix">
         <button
@@ -661,7 +661,7 @@ export default function DevicesPage() {
               <input className="input" placeholder="admin" value={addForm.rest_username} onChange={(e) => setAddForm((f) => ({ ...f, rest_username: e.target.value }))} />
             </Field>
             <Field label="REST API Password" error={addErrors.rest_password}>
-              <PasswordField value={addForm.rest_password} onChange={(v) => setAddForm((f) => ({ ...f, rest_password: v }))} />
+              <PasswordField value={addForm.rest_password} onChange={(v) => setAddForm((f) => ({ ...f, rest_password: v }))} placeholder="Enter password" />
             </Field>
             <Field label="REST API Port" desc="Default: 8008">
               <input className="input" type="number" min={1} max={65535} value={addForm.rest_port} onChange={(e) => setAddForm((f) => ({ ...f, rest_port: parseInt(e.target.value) || 8008 }))} />

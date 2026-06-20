@@ -218,15 +218,19 @@ html, body {
 }
 
 .btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
   width: 32px;
   height: 32px;
-  justify-content: center;
   background: transparent;
   color: var(--qz-fg-3);
   border-color: transparent;
+  border-radius: 50%;
 }
 .btn-icon:hover { background: var(--qz-ink-5); color: var(--qz-fg); }
+.btn-icon:focus-visible { box-shadow: none; }
 
 .btn-icon-sm {
   padding: 0;

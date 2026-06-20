@@ -752,6 +752,73 @@ pub async fn get_recent_events(db: &SqlitePool, limit: i64) -> Result<Vec<Device
     Ok(rows)
 }
 
+// ─── Global search ───────────────────────────────────────────────────────────
+
+pub async fn search(db: &SqlitePool, q: &str, per_kind: i64) -> Result<Vec<crate::models::SearchResult>> {
+    let pat = format!("%{}%", q);
+    let mut out: Vec<crate::models::SearchResult> = Vec::new();
+
+    // Devices
+    let devs: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, hostname, ip_address, location FROM devices
+         WHERE hostname LIKE ? OR ip_address LIKE ? OR location LIKE ?
+         ORDER BY hostname LIMIT ?",
+    )
+    .bind(&pat).bind(&pat).bind(&pat).bind(per_kind)
+    .fetch_all(db).await?;
+    for (id, hostname, ip, location) in devs {
+        out.push(crate::models::SearchResult {
+            kind: "device".into(),
+            device_id: id,
+            device_hostname: hostname.clone(),
+            label: hostname,
+            sublabel: Some(format!("{} — {}", ip, location.unwrap_or_default())),
+        });
+    }
+
+    // Interfaces (name + description)
+    let ifaces: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT di.device_id, d.hostname, di.name, di.description
+         FROM device_interfaces di
+         JOIN devices d ON di.device_id = d.id
+         WHERE di.name LIKE ? OR di.description LIKE ?
+         ORDER BY d.hostname, di.name LIMIT ?",
+    )
+    .bind(&pat).bind(&pat).bind(per_kind)
+    .fetch_all(db).await?;
+    for (device_id, hostname, name, desc) in ifaces {
+        out.push(crate::models::SearchResult {
+            kind: "interface".into(),
+            device_id,
+            device_hostname: hostname,
+            label: name,
+            sublabel: desc,
+        });
+    }
+
+    // VLANs (id + name)
+    let vlans: Vec<(String, String, i64, Option<String>)> = sqlx::query_as(
+        "SELECT v.device_id, d.hostname, v.vlan_id, v.name
+         FROM device_vlans v
+         JOIN devices d ON v.device_id = d.id
+         WHERE CAST(v.vlan_id AS TEXT) LIKE ? OR v.name LIKE ?
+         ORDER BY d.hostname, v.vlan_id LIMIT ?",
+    )
+    .bind(&pat).bind(&pat).bind(per_kind)
+    .fetch_all(db).await?;
+    for (device_id, hostname, vlan_id, name) in vlans {
+        out.push(crate::models::SearchResult {
+            kind: "vlan".into(),
+            device_id,
+            device_hostname: hostname,
+            label: format!("VLAN {}", vlan_id),
+            sublabel: name,
+        });
+    }
+
+    Ok(out)
+}
+
 // ─── Global events & audit log ───────────────────────────────────────────────
 
 pub async fn get_global_events(db: &SqlitePool, limit: i64) -> Result<Vec<crate::models::GlobalEvent>> {
